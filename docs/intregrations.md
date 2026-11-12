@@ -4,11 +4,13 @@ O e-mail é o canal fixo. Para a demonstração, valide primeiro o WhatsApp com 
 
 ## Fluxo comum
 
-1. Cada adaptador entrega à aplicação o canal, a conta receptora, o identificador externo da mensagem, o remetente, o texto original e a data de recebimento. Preserve também as referências de conversa e de resposta fornecidas pelo canal. Um formulário web poderá usar a mesma entrada.
-2. Registre a mensagem com uma chave única por canal, conta e identificador externo. Confirme o recebimento ao webhook depois de persistir o evento e deixe a análise para o processamento da triagem. Reentregas ou consultas repetidas reaproveitam o registro existente.
-3. Vincule a mensagem a uma solicitação aberta quando houver uma referência confiável no histórico e o contato corresponder ao vínculo. Abra nova triagem quando o vínculo estiver ausente, for ambíguo ou apontar para uma solicitação encerrada.
-4. O agente prepara o texto. O funcionário pode editá-lo e confere o destinatário e o canal antes de confirmar. Respostas ao remetente seguem pelo canal de origem.
-5. Antes do envio, registre a confirmação com o texto, o destino e o responsável. Faça uma tentativa por confirmação. Registre o retorno do provedor e, quando houver confirmação de entrega, atualize o histórico. Uma falha confirmada permite nova tentativa pelo funcionário. Um timeout sem retorno conclusivo deixa o envio incerto até a conferência do resultado.
+1. Cada adaptador entrega à aplicação o canal, a conta receptora, o identificador externo da mensagem normalizado para ser único nessa conta, o remetente, o texto original e a data de recebimento no canal. Preserve essa data nas reentregas e mantenha as referências de conversa e de resposta fornecidas pelo canal. Um formulário web poderá usar a mesma entrada.
+2. Registre a mensagem com uma chave única por canal, conta e identificador externo. Responda ao webhook depois de persistir o evento. Ao processar a triagem, a aplicação usa o registro para acionar o assistente. Reentregas ou consultas repetidas reaproveitam o registro existente.
+3. Vincule a mensagem a uma solicitação aberta quando houver uma referência confiável no histórico, o contato corresponder ao vínculo e a mensagem der continuidade à mesma demanda. Abra nova triagem para um pedido independente, mesmo que chegue como resposta direta na conversa anterior. Abra nova triagem também quando o vínculo estiver ausente, for ambíguo ou apontar para uma solicitação encerrada.
+4. A pedido do funcionário, o assistente prepara o rascunho da resposta ou da notificação. O funcionário pode editar o texto e confere o destinatário e o canal antes de autorizar o envio. As respostas ao remetente seguem pelo canal de origem.
+5. Antes do envio, registre o texto autorizado, o destino, o canal e quem confirmou. Aplique a RN22 antes de acionar o provedor. Use o RNF03 e o RNF08 para tratar confirmações repetidas ou simultâneas. Registre o retorno do provedor e atualize o histórico quando houver confirmação de entrega. As novas tentativas seguem a RN18.
+
+As regras de compromisso, vínculo, envio, reenvio e compartilhamento estão na RN11, nas RN16 a RN18, na RN21 e na RN22 dos [requisitos](requisitos.md).
 
 ## E-mail
 
@@ -29,6 +31,8 @@ Confirme o consentimento dos contatos para receber mensagens pelo WhatsApp. A ja
 ## Telegram
 
 Crie o bot com `/newbot` no BotFather e guarde o token no backend. Em `setWebhook`, informe uma URL HTTPS e configure `secret_token`. Confira o segredo no cabeçalho `X-Telegram-Bot-Api-Secret-Token` a cada chamada. Quando houver um processo contínuo, o adaptador pode usar long polling com `getUpdates`. Use um modo de recebimento por bot. [BotFather](https://core.telegram.org/bots/features#creating-a-new-bot) · [Webhook](https://core.telegram.org/bots/api#setwebhook) · [Long polling](https://core.telegram.org/bots/api#getupdates)
+
+O adaptador do Telegram combina `message.chat.id` e `message.message_id` para formar o identificador externo da mensagem. O adaptador usa o mesmo escopo ao referenciar a mensagem respondida.
 
 Em chat privado, o primeiro contato parte do usuário. Na demonstração, o participante que representa o produtor abre o bot e toca em **Iniciar**. Associe o `chat_id` recebido ao cadastro desse produtor e use-o em `sendMessage` após a confirmação do funcionário. Para responder ao remetente de uma solicitação, use o `chat_id` da mensagem de origem. [Primeiro contato](https://core.telegram.org/bots#how-are-bots-different-from-users) · [Envio de mensagens](https://core.telegram.org/bots/api#sendmessage)
 
