@@ -1,0 +1,238 @@
+.registry-page {
+  width: min(100%, 1120px);
+  margin-inline: auto;
+}
+
+.registry-page .page-heading {
+  align-items: center;
+  margin-bottom: 22px;
+}
+
+.registry-page .page-heading h1 {
+  margin: 0;
+  font-size: clamp(1.55rem, 2.4vw, 2rem);
+  letter-spacing: -.045em;
+}
+
+.registry-page .page-heading p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.registry-page .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.registry-page .btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.registry-tabs {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+
+.registry-tab {
+  padding: 10px 2px 12px;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+.registry-tab:hover,
+.registry-tab[aria-current="page"] {
+  color: var(--green);
+}
+
+.registry-tab[aria-current="page"] {
+  border-bottom-color: var(--green);
+  font-weight: 650;
+}
+
+.registry-id {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: .75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.registry-table-action {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.registry-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 16px;
+  color: var(--muted);
+  font-size: .85rem;
+}
+
+.registry-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr);
+  align-items: start;
+  gap: 18px;
+}
+
+.registry-detail-main {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.registry-section {
+  padding: 24px;
+}
+
+.registry-section h2 {
+  margin: 0 0 18px;
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.registry-details {
+  margin: 0;
+}
+
+.registry-details > div {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) minmax(0, 2fr);
+  gap: 8px 18px;
+  border-top: 1px solid var(--line);
+  padding: 13px 0;
+}
+
+.registry-details dt,
+.registry-help,
+.registry-links p,
+.registry-file small {
+  color: var(--muted);
+}
+
+.registry-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.registry-links ul {
+  margin: 0;
+  padding-inline-start: 1.2em;
+}
+
+.registry-links li + li {
+  margin-top: 7px;
+}
+
+.registry-links p,
+.registry-help {
+  font-size: .82rem;
+  line-height: 1.45;
+}
+
+.registry-file {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.registry-file strong {
+  overflow-wrap: anywhere;
+}
+
+.registry-file small {
+  display: block;
+  margin-top: 3px;
+}
+
+.registry-file-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.registry-versions {
+  margin-top: 15px;
+}
+
+.registry-versions summary {
+  cursor: pointer;
+  color: var(--green);
+  font-size: .85rem;
+  font-weight: 650;
+}
+
+.registry-versions ul {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.registry-versions li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  font-size: .85rem;
+}
+
+.registry-form {
+  max-width: 820px;
+}
+
+.registry-form .form-actions {
+  margin-top: 22px;
+}
+
+.registry-form .notice {
+  margin: 16px 0 0;
+}
+
+.registry-help {
+  margin: 6px 0 0;
+}
+
+@media (max-width: 840px) {
+  .registry-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 520px) {
+  .registry-section {
+    padding: 16px;
+  }
+
+  .registry-file {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .registry-file .btn {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
