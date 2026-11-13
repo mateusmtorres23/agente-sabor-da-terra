@@ -17,7 +17,7 @@ Critérios de aceitação:
 
 Como funcionário, quero receber uma análise da mensagem para entender a demanda e suas pendências antes de decidir.
 
-Requisitos: RF02, RF03, RF04, RF11, RF12, RF26 a RF29; RN06 a RN08, RN16; RNF03, RNF06.
+Requisitos: RF02, RF03, RF04, RF11, RF12, RF15, RF26 a RF29; RN06 a RN08, RN16; RNF03, RNF06.
 
 Critérios de aceitação:
 
@@ -25,10 +25,10 @@ Critérios de aceitação:
 - As mensagens novas dos canais integrados entram na mesma caixa de entrada e passam pela mesma triagem que as mensagens da amostra.
 - O sistema preserva o texto original, o remetente, o canal e a data de recebimento de cada mensagem, além do identificador de origem quando disponível. Uma nova entrega da mesma mensagem pelo canal integrado mantém um único registro.
 - O sistema, ao receber um novo pedido como resposta direta a uma mensagem de outra solicitação aberta do mesmo contato, cria uma solicitação separada e preserva a anterior.
-- O sistema registra na solicitação aberta a resposta que dá continuidade à demanda e tem vínculo inequívoco. O sistema atualiza apenas a análise e as pendências dessa solicitação. O sistema abre nova triagem quando o vínculo é incerto ou a solicitação anterior está encerrada.
+- O sistema registra na solicitação aberta a resposta que dá continuidade à demanda e tem vínculo inequívoco. Atualiza a análise, as pendências e o estado dessa solicitação conforme o RF15. O sistema abre nova triagem quando o vínculo é incerto ou a solicitação anterior está encerrada.
 - O sistema, se o Telegram estiver integrado, registra separadamente duas mensagens com o mesmo `message_id` em chats diferentes do mesmo bot. O sistema, ao receber uma reentrega de uma delas, reaproveita apenas o registro do chat correspondente.
 - O cartão apresenta o resumo, o tipo, a urgência justificada e as pendências.
-- A opção de abrir o chat no cartão leva à conversa daquela solicitação. A conversa começa com a análise inicial do assistente. Ao reabrir o chat, o funcionário encontra o histórico da conversa. Se a solicitação tiver mensagens recebidas, o funcionário pode consultar o texto original pelo chat.
+- O funcionário pode abrir o chat pelo cartão para consultar a análise inicial assim que estiver disponível e ver o histórico ao voltar à conversa. Se a solicitação tiver mensagens recebidas, o funcionário pode consultar o texto original pelo chat.
 - A análise organiza os dados extraídos e preserva condições como "se tiver", a frequência de fornecimento e intenções adicionais, como uma oferta acompanhada de solicitação de cadastro.
 - O assistente interpreta a mensagem PED-2026-011 em inglês e apresenta a triagem em português.
 - Ao consultar o PED-2026-003 em novembro, o cartão mantém 29/10 como data de entrega solicitada e indica que o prazo venceu.
@@ -55,10 +55,10 @@ Requisitos: RF06, RF14, RF23, RF30 a RF32; RN01 a RN04, RN10, RN13, RN23.
 Critérios de aceitação:
 
 - A sugestão identifica os produtores candidatos e cita as fontes usadas.
-- Para cada candidato, a sugestão indica quanto ele poderia fornecer quando houver dados suficientes e o que o funcionário ainda precisa confirmar sobre a disponibilidade.
+- Quando houver dados suficientes, a sugestão mostra a capacidade estimada de cada candidato para o produto, com unidade, período e fonte. O assistente indica o que o funcionário ainda precisa confirmar sobre a disponibilidade.
 - Para um pedido cadastrado, a sugestão considera a quantidade de cada item que ainda falta alocar.
 - O assistente exclui produtores inaptos da sugestão e indica o motivo. O assistente apresenta dados ausentes ou conflitantes como pendências e indica a aptidão sem comprovação como pendente, separada dos candidatos aptos.
-- O assistente, no PED-2026-004, consulta o contrato do PNAE e aponta a falta de comprovação de DAP/CAF vigente já na triagem quando houver apenas o número do registro.
+- Na triagem do PED-2026-004, se a base só informar o número do DAP ou CAF, o assistente aponta que falta comprovar a vigência e cita o contrato do PNAE.
 - O funcionário pode discutir alternativas no chat e registra as alocações escolhidas na gestão do pedido.
 
 ## US05 - Acompanhar a triagem
@@ -70,8 +70,9 @@ Requisitos: RF12, RF15; RN10.
 Critérios de aceitação:
 
 - Na fila de triagem, o funcionário vê o estado atual de cada solicitação e as pendências existentes.
+- Uma solicitação nova aparece como recebida. Quando a análise começa, o sistema muda o estado para em análise. Se faltar informação para decidir, muda para aguardando informações. Quando já dá para decidir, inclusive se o atendimento for inviável, muda para pronta para decisão. Se um esclarecimento resolver a última pendência que impedia a decisão, a solicitação passa para pronta para decisão.
 - Sem fornecedor apto, a análise explica o motivo. O funcionário pode buscar esclarecimentos ou encerrar sem atendimento.
-- O encerramento registra o resultado da triagem e as pendências restantes.
+- Quando o funcionário encerra a solicitação, o sistema muda o estado para encerrada e registra o resultado da triagem e as pendências restantes.
 
 ## US06 - Consultar documentos e dados
 
@@ -99,7 +100,8 @@ Critérios de aceitação:
 - O resumo identifica produtor, período e data de referência, com fontes dos valores e registros apresentados.
 - O resumo usa a data da transação para selecionar vendas e a data de pagamento para selecionar pagamentos registrados. No PED-2026-012, os R$ 940 de vendas ao Mercado Bom Preço entram em setembro e o pagamento registrado entra em outubro. Quantidades respeitam produto e unidade.
 - O resumo distingue pendências vencidas e a vencer na data de referência, inclusive as de períodos anteriores. Quando não encontra registros, o assistente informa a ausência. O pagamento registrado, por si só, não comprova repasse bancário.
-- O resumo lista as alocações cadastradas para o produtor conforme a previsão de fornecimento no período. Após o cancelamento do pedido, as alocações removidas deixam de aparecer nos novos resumos.
+- No resumo da produtora P001 com referência em 30/09/2026, os R$ 940 do Mercado Bom Preço aparecem como valor a vencer. O vencimento é em 02/10/2026 e o pagamento consta em 01/10/2026.
+- O resumo lista as alocações do produtor com entrega prevista no período, inclusive quando só parte do intervalo de entrega cai no período. Após o cancelamento do pedido, as alocações removidas deixam de aparecer nos novos resumos.
 - O resumo é acompanhado da opção "Baixar resumo em PDF". O arquivo preserva o conteúdo e as fontes exibidos.
 
 ## US08 - Preparar e enviar uma notificação
@@ -115,12 +117,12 @@ Critérios de aceitação:
 - A notificação só comunica uma alocação futura como confirmada se os dados atuais comprovarem a aptidão do produtor. Se faltar comprovação obrigatória, a aplicação sinaliza a pendência para revisão.
 - O funcionário pode editar e copiar o texto e escolher um canal integrado.
 - O sistema mostra o destinatário e o canal da notificação para o funcionário conferir antes de confirmar.
-- Na demonstração, o envio fica disponível apenas para destinos de teste que a equipe vinculou ao produtor. Se faltar destino válido ou o canal impedir o envio, a aplicação informa o motivo e oferece a opção de copiar o rascunho.
+- Na demonstração, o envio fica disponível apenas para destinos de teste que a equipe vinculou ao produtor. Se faltar destino válido ou o canal impedir o envio, a aplicação informa o motivo e oferece a cópia do rascunho conforme a RN21.
 - O sistema só envia a versão revisada após a confirmação explícita do funcionário.
 - O assistente deixa dados pessoais ou bancários das fontes fora do texto da notificação e da versão copiável até o funcionário autorizar os dados específicos para aquele destinatário.
 - O sistema registra no histórico o texto autorizado, o funcionário que confirmou, o destinatário, o canal e o resultado do envio.
 - O sistema bloqueia o envio da notificação de compromisso e informa o motivo se o pedido for cancelado antes da confirmação ou entre a confirmação e o disparo.
-- Se a quantidade alocada mudar após uma falha de envio, a aplicação bloqueia o reenvio do rascunho anterior e informa o motivo.
+- Se, após uma falha, as alocações deixarem de cobrir a quantidade prometida, o sistema bloqueia o reenvio do rascunho e informa o motivo.
 
 ## US09 - Retomar o trabalho
 
@@ -141,11 +143,11 @@ Requisitos: RN18; RNF02, RNF03, RNF08 a RNF10.
 
 Critérios de aceitação:
 
-- A interface indica processamento e informa falhas. Após 60 segundos sem conclusão, informa a demora e oferece nova tentativa. Para envios, aplica a RN18.
+- A interface indica processamento e informa falhas. Após 60 segundos sem conclusão, informa a demora. Para envios, só oferece nova tentativa após falha confirmada, conforme a RN18. Nas demais operações, oferece nova tentativa após o aviso de demora.
 - A solicitação permanece disponível. Repetir a mesma operação mantém um único registro, inclusive na confirmação de pedidos e agendamentos pelo chat, na geração de ocorrências e no cadastro de alocações. Uma alteração rejeitada mantém o registro anterior.
 - O resultado atrasado de uma tentativa anterior não substitui análises ou esclarecimentos mais recentes.
 - O sistema aciona no máximo uma tentativa ao receber a mesma confirmação mais de uma vez ou duas confirmações simultâneas da mesma versão do rascunho para o mesmo destinatário e canal. O sistema, após um envio bem-sucedido, bloqueia nova tentativa dessa versão para o mesmo destinatário e canal.
-- O sistema mantém o reenvio bloqueado durante a tentativa. O sistema mantém o bloqueio se a conferência terminar com resultado incerto, mesmo que o funcionário edite o rascunho.
+- O sistema mantém o reenvio bloqueado durante a tentativa. Se a tentativa terminar sem confirmação do resultado, o histórico mostra "Resultado incerto" e explica que reenviar pode duplicar a mensagem. O reenvio fica bloqueado mesmo se o funcionário editar o rascunho. Se o canal confirmar o resultado mais tarde, o sistema atualiza o histórico.
 - O sistema libera uma nova tentativa após confirmar a falha anterior e receber nova confirmação explícita do funcionário.
 
 ## US11 - Manter os cadastros
@@ -171,6 +173,7 @@ Requisitos: RF20, RF35; RN14.
 Critérios de aceitação:
 
 - O funcionário pode criar, consultar, editar e cancelar pedidos.
+- No cadastro manual e na edição, o funcionário pode informar uma data ou um intervalo de entrega. O pedido salvo mostra o prazo informado.
 - No cadastro manual e na edição, o funcionário pode registrar condições para todo o pedido e para itens específicos. Ao consultar o pedido salvo, ele vê a que parte do pedido cada condição se aplica.
 - A aplicação registra o cancelamento e exclui as alocações do pedido na mesma operação. O pedido continua consultável com o estado cancelado.
 
@@ -183,9 +186,11 @@ Requisitos: RF20, RF21, RF35, RF37, RF38; RN16, RN20; RNF03.
 Critérios de aceitação:
 
 - O assistente apresenta no chat um rascunho com o comprador, os itens, as quantidades, as unidades, o prazo e as condições de atendimento.
+- Se o comprador pedir entrega de 4 a 8 de novembro, o rascunho mostra o intervalo e o sistema o salva ao confirmar o pedido. Se o funcionário escolher um dia específico na revisão, o sistema salva a data escolhida.
 - Ao revisar o rascunho no chat, o funcionário pode ajustar os dados e decidir se inclui os itens solicitados sob condição.
 - Se uma resposta do comprador vinculada à solicitação corrigir a quantidade de 30 para 15 enquanto o rascunho estiver aberto, o funcionário vê a correção antes de confirmar a versão que deseja cadastrar.
 - Após a confirmação explícita do funcionário, o sistema cadastra a versão revisada. O pedido fica disponível para consulta e edição na gestão de pedidos.
+- Quando o pedido é cadastrado pela triagem, o funcionário pode abri-lo pelo chat da solicitação de origem, inclusive depois de reabrir a conversa.
 - Ao consultar o pedido cadastrado a partir do PED-2026-004, o funcionário encontra a exigência de certificação orgânica no item de mel.
 
 ## US14 - Agendar pedidos
@@ -205,19 +210,20 @@ Critérios de aceitação:
 - Um agendamento salvo na segunda-feira para fornecimento na terça-feira, com dois dias de antecedência, gera a primeira solicitação na segunda-feira, uma única vez.
 - O sistema, ao salvar um agendamento de fornecimento para hoje com antecedência zero depois da rotina do dia, gera a primeira solicitação de imediato, uma única vez. O sistema faz o mesmo ao retomar o serviço quando essa ocorrência ainda estiver pendente.
 - Alterar ou cancelar um agendamento afeta apenas ocorrências pendentes.
+- Se a entrega de terça-feira já entrou na triagem e o funcionário muda o dia da série para quinta-feira da mesma semana, a solicitação de terça mantém os dados originais. A primeira entrega de quinta-feira fica para a semana seguinte, mesmo que a solicitação de terça tenha sido gerada no domingo anterior.
 
 ## US15 - Gerenciar alocações
 
 Como funcionário, quero gerenciar as alocações de cada item do pedido para registrar quem atenderá a demanda.
 
-Requisitos: RF20, RF23; RN01, RN02, RN12 a RN14, RN24 a RN26.
+Requisitos: RF20, RF23; RN03, RN12 a RN14, RN24 a RN26.
 
 Critérios de aceitação:
 
 - O funcionário pode cadastrar, consultar, editar e excluir alocações. Cada alocação identifica o item do pedido, o produtor, a quantidade e a unidade.
-- O sistema exige pedido ativo, produtor apto e disponibilidade confirmada pelo funcionário para cadastrar ou editar uma alocação.
-- A quantidade alocada é positiva e usa unidade compatível. A soma das alocações respeita o limite solicitado para o item.
-- A aplicação usa os mesmos critérios de aptidão da triagem. A alocação exige comprovação das restrições sanitárias, contratuais e documentais aplicáveis, mesmo quando elas não constam do pedido. No PED-2026-004, a aplicação bloqueia a alocação e informa a pendência se houver número de DAP/CAF sem prova de vigência.
+- O sistema exige pedido ativo e disponibilidade confirmada pelo funcionário para cadastrar ou editar uma alocação.
+- A quantidade alocada é positiva. O sistema converte as quantidades para a unidade do item antes de verificar se a soma respeita o limite solicitado. Se a unidade for incompatível ou o total ultrapassar o limite, o sistema rejeita o salvamento.
+- Se o funcionário tentar cadastrar ou editar uma alocação para o produtor P015, marcado como inativo na base, o sistema impede o salvamento e informa o motivo.
 - O funcionário precisa ajustar ou excluir as alocações afetadas antes de salvar uma alteração do pedido que entre em conflito com elas.
 - O sistema rejeita o salvamento de uma alocação após o cancelamento do pedido, mesmo se o formulário tiver sido aberto antes. O sistema mantém o pedido cancelado sem alocações mesmo se o salvamento e o cancelamento forem simultâneos.
 
@@ -233,8 +239,8 @@ Critérios de aceitação:
 - O assistente, quando o remetente pede documentos, dados pessoais ou dados bancários, avisa o funcionário. O assistente lista, no aviso do PED-2026-009, os documentos e dados cadastrais solicitados.
 - O assistente, ao responder a uma nova consulta integrada sobre a validade de uma certificação cuja fonte contém CPF, informa a validade e deixa o CPF fora do rascunho e da versão copiável. O assistente inclui somente os dados específicos que o funcionário autorizar para aquele destinatário.
 - O sistema bloqueia a cópia e o envio se o funcionário incluir um CPF ao editar o rascunho e ainda não tiver autorizado o compartilhamento desse dado com o destinatário. O sistema libera a cópia após essa autorização e aplica a RN17 ao envio.
-- O sistema só oferece o envio para mensagens novas de canais integrados quando há um destino válido e o canal permite o envio.
+- O sistema só oferece o envio de respostas a mensagens recebidas pela integração quando há um destino válido e o canal permite o envio, conforme a RN17.
 - O sistema mostra o destinatário e o canal para o funcionário conferir antes de confirmar. O sistema envia o texto revisado pelo canal de origem após a confirmação explícita do funcionário.
 - O sistema bloqueia, antes do disparo, uma resposta que confirma ao comprador o fornecimento de 30 unidades quando as alocações vigentes cobrem apenas 20. O sistema informa o motivo do bloqueio.
-- Quando o canal de origem não está integrado, falta um destino válido ou o canal impede o envio, a aplicação informa o motivo e oferece a opção de copiar a resposta.
+- Quando o canal de origem não está integrado, falta um destino válido ou o canal impede o envio, a aplicação informa o motivo e oferece a cópia da resposta conforme a RN21.
 - O sistema registra no histórico o texto autorizado, o funcionário que confirmou, o destinatário, o canal e o resultado do envio.
