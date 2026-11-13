@@ -137,11 +137,13 @@ h1, h2, h3, p { overflow-wrap: anywhere; }
 .request-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; font-weight: 650; }
 .request-card h2 { margin: 11px 0 4px; font-size: 18px; line-height: 1.25; letter-spacing: -.025em; }
 .request-summary { margin: 0; color: #3e4c55; font-size: 14px; }
+.request-result { margin: 9px 0 0; color: var(--ink); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .request-pending { display: flex; gap: 8px; align-items: baseline; margin: 9px 0 0; color: var(--amber); font-size: 13px; }
 .request-pending span { width: 6px; height: 6px; align-self: flex-start; margin-top: .55em; border-radius: 50%; background: #b37b20; flex: 0 0 6px; }
 .request-bottom { margin-top: auto; padding-top: 13px; }
 .request-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; color: var(--muted); font-size: 12px; }
-.request-link { display: inline-flex; align-items: center; gap: 7px; margin-top: 11px; padding: 3px 0; background: transparent; border: 0; color: var(--green-dark); font-weight: 680; font-size: 13px; text-align: left; }
+.request-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 10px; margin-top: 11px; }
+.request-link { display: inline-flex; align-items: center; gap: 7px; padding: 3px 0; background: transparent; border: 0; color: var(--green-dark); font-weight: 680; font-size: 13px; text-align: left; }
 .request-link .icon { width: 15px; height: 15px; transition: transform .18s; }
 .request-link:hover .icon { transform: translateX(3px); }
 .request-empty { grid-column: 1 / -1; }

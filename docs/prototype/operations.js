@@ -79,13 +79,25 @@ window.createPrototypeOperations = function (ctx) {
     return { buyer, conditions: String(data.conditions || "").trim(), items: normalizeItems(data.items) };
   }
 
+  function orderDates(data) {
+    const due = isoDate(data.due);
+    const dueEnd = isoDate(data.dueEnd);
+    if (!due) throw new Error("Informe uma data de entrega válida.");
+    if (data.dueEnd && (!dueEnd || dueEnd < due)) {
+      throw new Error("A data final da entrega deve ser igual ou posterior à inicial.");
+    }
+    return { due, dueEnd: dueEnd === due ? "" : dueEnd };
+  }
+
+  function orderDeadline(order) {
+    return order.dueEnd ? `${dateBR(order.due)} a ${dateBR(order.dueEnd)}` : dateBR(order.due);
+  }
+
   function createOrder(data) {
     const existing = data.operationId && state.orders.find(order => order.operationId === data.operationId);
     if (existing) return existing;
-    const due = isoDate(data.due);
-    if (!due) throw new Error("Informe um prazo de fornecimento válido.");
     const order = {
-      ...validateCommon(data), id: uid("PED"), due, source: data.source || "—",
+      ...validateCommon(data), ...orderDates(data), id: uid("PED"), source: data.source || "—",
       status: "Ativo", allocations: [], operationId: data.operationId || null
     };
     state.orders.push(order);
@@ -119,8 +131,20 @@ window.createPrototypeOperations = function (ctx) {
     return schedule;
   }
 
+  function weekdayIndex(date) {
+    return (new Date(`${date}T12:00:00Z`).getUTCDay() + 6) % 7;
+  }
+
+  function occurrenceWeek(date) {
+    return dateShift(date, -weekdayIndex(date));
+  }
+
+  function recordedWeeks(schedule) {
+    return new Set((schedule.occurrences || []).map(entry => occurrenceWeek(entry.date)));
+  }
+
   function recordOccurrence(schedule, date, status) {
-    if (schedule.occurrences.some(entry => entry.date === date)) return false;
+    if (recordedWeeks(schedule).has(occurrenceWeek(date))) return false;
     const entry = { date, status, triageDate: dateShift(date, -Number(schedule.lead)) };
     if (status === "Gerada") {
       const existing = state.triage.find(request => request.source === schedule.id && isoDate(request.due) === date);
@@ -155,10 +179,10 @@ window.createPrototypeOperations = function (ctx) {
     if (schedule.status === "Cancelado" || !firstDate) return changed;
     const day = referenceDay();
     const through = dateShift(day, Number(schedule.lead || 0));
-    const recorded = new Set(schedule.occurrences.map(entry => entry.date));
+    const recorded = recordedWeeks(schedule);
     const cadence = schedule.recurrence === "Quinzenal" ? 14 : 7;
     for (let date = firstDate; date && date <= through; date = dateShift(date, cadence)) {
-      if (!recorded.has(date)) changed = recordOccurrence(schedule, date, date < day ? "Perdida" : "Gerada") || changed;
+      if (!recorded.has(occurrenceWeek(date))) changed = recordOccurrence(schedule, date, date < day ? "Perdida" : "Gerada") || changed;
     }
     return changed;
   }
@@ -185,47 +209,8 @@ window.createPrototypeOperations = function (ctx) {
     return state.products.find(product => product.id === item.productId || (!item.productId && key(product.name) === key(item.name)));
   }
 
-  function evidenceThrough(document) {
-    const stated = `${document.status || ""}\n${document.content || ""}`;
-    const dates = stated.match(/\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2}/g) || [];
-    return isoDate(document.validUntil) || isoDate(dates.at(-1));
-  }
-
-  function allocationBlock(order, item, producer) {
-    if (!producer || producer.status !== "Ativo") return "Selecione um produtor ativo.";
-    const itemScope = key(`${item.name} ${item.condition || ""}`);
-    const scope = key(`${order.buyer} ${order.conditions || ""} ${itemScope}`);
-    const deadline = isoDate(order.due);
-    const docs = state.documents.filter(document => {
-      const text = key(`${document.name} ${document.content || ""}`);
-      return document.producerId ? document.producerId === producer.id : text.includes(key(producer.name));
-    });
-    const hasEvidence = pattern => docs.some(document => {
-      const title = key(`${document.kind} ${document.name}`);
-      return pattern.test(title) && evidenceThrough(document) >= deadline && !/vencid|suspens|inativ/.test(key(document.status));
-    });
-    if ((order.source === "PED-2026-004" || /\bpnae\b|\bdap\b|\bcaf\b/.test(scope)) && !hasEvidence(/\bdap\b|\bcaf\b/)) {
-      return "Falta comprovação de vigência do DAP/CAF para a data de fornecimento.";
-    }
-    if (/organic/.test(itemScope)) {
-      const productName = key(item.name).replace(/\s+organic[oa]s?\b/g, "");
-      const organic = docs.some(document => {
-        const title = key(`${document.kind} ${document.name}`);
-        const products = key(document.content);
-        return /organic/.test(title) && products.includes(productName) && evidenceThrough(document) >= deadline && !/vencid|suspens|inativ/.test(key(document.status));
-      });
-      if (!organic) return "Falta certificação orgânica vigente para o produto na data de fornecimento.";
-    }
-    if (/\bsie\b|\bsim\b|\bsisbi\b|laudo sanitario|registro sanitario/.test(scope) && !hasEvidence(/\bsie\b|\bsim\b|\bsisbi\b|sanitari/)) {
-      return "Falta comprovação sanitária vigente para a data de fornecimento.";
-    }
-    return "";
-  }
-
   function updateOrder(order, data) {
-    const due = isoDate(data.due);
-    if (!due) throw new Error("Informe um prazo de fornecimento válido.");
-    const updated = { ...order, ...validateCommon(data), due };
+    const updated = { ...order, ...validateCommon(data), ...orderDates(data) };
     order.items.forEach((original, index) => {
       const allocations = orderAllocations(order, original, index);
       if (!allocations.length) return;
@@ -233,12 +218,6 @@ window.createPrototypeOperations = function (ctx) {
       const total = allocations.reduce((sum, allocation) => sum + Number(allocation.qty), 0);
       if (!item || key(item.name) !== key(original.name) || key(item.unit) !== key(original.unit) || exceeds(total, item.qty)) {
         throw new Error(`Ajuste ou remova as alocações de ${original.name} antes de alterar o item.`);
-      }
-      if (due !== isoDate(order.due) || order.buyer !== updated.buyer || order.conditions !== updated.conditions || item.condition !== original.condition) {
-        for (const allocation of allocations) {
-          const reason = allocationBlock(updated, item, currentProducer(allocation));
-          if (reason) throw new Error(`Ajuste a alocação de ${original.name}. ${reason}`);
-        }
       }
       const affected = new Set(allocations.map(allocation => allocation.id));
       updated.allocations = updated.allocations.map(entry => affected.has(entry.id) ? { ...entry, itemId: item.id } : entry);
@@ -271,7 +250,7 @@ window.createPrototypeOperations = function (ctx) {
   function orderList() {
     const rows = state.orders.map(order => `<tr>
       <td><strong>${esc(order.buyer)}</strong><span class="ops-subline">${esc(order.id)}</span></td>
-      <td>${order.items.map(item => esc(itemText(item))).join("<br>")}</td><td>${esc(dateBR(order.due))}</td>
+      <td>${order.items.map(item => esc(itemText(item))).join("<br>")}</td><td>${esc(orderDeadline(order))}</td>
       <td>${orderStatus(order)}</td><td class="ops-row-action">${button("order", "Abrir pedido", order.id, "small")}</td>
     </tr>`);
     return heading("Pedidos", "Acompanhe os pedidos e as alocações por item.", button("new-order", "Novo pedido", "", "primary")) +
@@ -313,23 +292,39 @@ window.createPrototypeOperations = function (ctx) {
     }).join("");
     return heading(order.buyer, `Pedido ${order.id}`, actions, back("orders", "Pedidos")) + `<div class="ops-detail-grid">
       ${section("Itens e alocações", items)}
-      ${section("Dados do pedido", infoList([["Estado", orderStatus(order)], ["Fornecimento", esc(dateBR(order.due))], ["Condições de atendimento", esc(order.conditions)], ["Solicitação de origem", source ? button("source", source.id, source.id, "small") : esc(order.source)]]))}
+      ${section("Dados do pedido", infoList([["Estado", orderStatus(order)], ["Fornecimento", esc(orderDeadline(order))], ["Condições de atendimento", esc(order.conditions)], ["Solicitação de origem", source ? button("source", source.id, source.id, "small") : esc(order.source)]]))}
     </div>`;
   }
 
-  function pendingOccurrences(schedule) {
+  function pendingOccurrences(schedule, limit = 4) {
     const firstDate = isoDate(schedule.firstDate);
     if (schedule.status === "Cancelado" || !firstDate) return [];
-    const existing = new Set(schedule.occurrences.map(entry => entry.date));
+    const existing = recordedWeeks(schedule);
     const pending = [];
     const today = referenceDay();
     const cadence = schedule.recurrence === "Quinzenal" ? 14 : 7;
-    for (let date = firstDate; date && pending.length < 4; date = dateShift(date, cadence)) {
-      if (!existing.has(date) && date >= today) {
+    for (let date = firstDate; date && pending.length < limit; date = dateShift(date, cadence)) {
+      if (date >= today && !existing.has(occurrenceWeek(date))) {
         pending.push({ date, triageDate: dateShift(date, -Number(schedule.lead)), status: "Pendente" });
       }
     }
     return pending;
+  }
+
+  function updateSchedule(schedule, data) {
+    const updated = validateSchedule(data);
+    if (updated.firstDate !== isoDate(schedule.firstDate)) {
+      const firstPending = pendingOccurrences(schedule, 1)[0];
+      const firstPendingWeek = firstPending ? occurrenceWeek(firstPending.date) : "";
+      if (firstPendingWeek && occurrenceWeek(updated.firstDate) < firstPendingWeek) {
+        const firstDate = dateShift(firstPendingWeek, weekdayIndex(updated.firstDate));
+        if (!firstDate) throw new Error("A nova data fica fora do intervalo disponível.");
+        updated.firstDate = firstDate;
+      }
+    }
+    Object.assign(schedule, updated);
+    syncSchedule(schedule);
+    save();
   }
 
   function scheduleDetail(schedule) {
@@ -376,7 +371,9 @@ window.createPrototypeOperations = function (ctx) {
     const title = `${record ? "Editar" : "Novo"} ${entity}`;
     const rows = record ? itemsFrom(record.items).map((item, index) => ({ ...item, id: item.id || `legacy-${index}` })) : [{}];
     const productOptions = state.products.map(product => `<option value="${esc(product.name)}"></option>`).join("");
-    const dates = scheduled ? `${input("Primeiro fornecimento", "firstDate", isoDate(record?.firstDate), 'type="date" required')}${input("Antecedência em dias corridos", "lead", record?.lead ?? 2, 'type="number" min="0" step="1" required')}` : input("Prazo de fornecimento", "due", isoDate(record?.due), 'type="date" required');
+    const dates = scheduled
+      ? `${input("Primeiro fornecimento", "firstDate", isoDate(record?.firstDate), 'type="date" required')}${input("Antecedência em dias corridos", "lead", record?.lead ?? 2, 'type="number" min="0" step="1" required')}`
+      : `${input("Data de entrega ou início do intervalo", "due", isoDate(record?.due), 'type="date" required')}${input("Fim do intervalo (opcional)", "dueEnd", isoDate(record?.dueEnd), 'type="date"')}`;
     return heading(title, scheduled ? "Fornecimento semanal" : "", "", back(view, scheduled ? "Agendamentos" : "Pedidos")) + `<form class="card ops-form" data-ops-form="${scheduled ? "schedule" : "order"}" data-id="${esc(record?.id)}">
       <div class="form-grid">${input("Comprador", "buyer", record?.buyer, "required")}${dates}</div>
       <div class="ops-form-section"><div class="ops-form-section-head"><h3>Itens</h3>${button("add-item", "Adicionar item", "", "small")}</div>
@@ -513,8 +510,8 @@ window.createPrototypeOperations = function (ctx) {
     const item = order?.items[index];
     if (!item || order.status === "Cancelado") throw new Error("Este item não está disponível para alocação.");
     const producer = state.producers.find(entry => entry.id === data.get("producerId"));
-    const reason = allocationBlock(order, item, producer);
-    if (reason) throw new Error(reason);
+    if (!producer) throw new Error("Selecione um produtor.");
+    if (key(producer.status) === "inativo") throw new Error("Este produtor está marcado como inativo no cadastro.");
     if (!data.has("confirmed")) throw new Error("Confirme a disponibilidade com o produtor.");
     const qty = quantity(data.get("qty"));
     if (!Number.isFinite(qty) || qty <= 0) throw new Error("Informe uma quantidade maior que zero.");
@@ -536,7 +533,7 @@ window.createPrototypeOperations = function (ctx) {
     try {
       if (kind === "allocation") saveAllocation(form, data);
       if (kind === "order") {
-        const input = { buyer: data.get("buyer"), due: data.get("due"), conditions: data.get("conditions"), items: formItems(form) };
+        const input = { buyer: data.get("buyer"), due: data.get("due"), dueEnd: data.get("dueEnd"), conditions: data.get("conditions"), items: formItems(form) };
         const existing = state.orders.find(order => order.id === form.dataset.id);
         if (existing) updateOrder(existing, input);
         const order = existing || createOrder(input);
@@ -546,11 +543,7 @@ window.createPrototypeOperations = function (ctx) {
       if (kind === "schedule") {
         const input = { buyer: data.get("buyer"), firstDate: data.get("firstDate"), lead: data.get("lead"), conditions: data.get("conditions"), items: formItems(form) };
         const existing = state.schedules.find(schedule => schedule.id === form.dataset.id);
-        if (existing) {
-          Object.assign(existing, validateSchedule(input));
-          syncSchedule(existing);
-          save();
-        }
+        if (existing) updateSchedule(existing, input);
         const schedule = existing || createSchedule(input);
         navigateTo("schedules", "detail", schedule.id);
         toast(existing ? "Agendamento atualizado." : "Agendamento cadastrado.");

@@ -2,11 +2,12 @@
   "use strict";
 
   const STORAGE = "sabor-da-terra-prototype-v1";
-  const today = new Date("2026-11-11T12:00:00");
+  const today = new Date("2026-11-11T12:00:00-03:00");
   const app = document.getElementById("app");
   const state = load();
   const filters = { search: "", status: "", urgency: "", type: "", channel: "" };
   const triageStates = ["Recebida", "Em análise", "Aguardando informações", "Pronta para decisão", "Encerrada"];
+  const requestsInAnalysis = new Set();
   let searchOpen = false;
   let triageScroll = 0;
   let dialog = null;
@@ -37,6 +38,11 @@
 
   function dateBR(value) {
     return /^\d{4}-\d{2}-\d{2}$/.test(value || "") ? value.split("-").reverse().join("/") : value || "—";
+  }
+
+  function isoDate(value) {
+    return /^\d{2}\/\d{2}\/\d{4}$/.test(value || "") ? value.split("/").reverse().join("-") :
+      /^\d{4}-\d{2}-\d{2}$/.test(value || "") ? value : "";
   }
 
   function badge(value, tone) {
@@ -84,7 +90,10 @@
     toastTimer = setTimeout(() => node.classList.remove("show"), 3200);
   }
 
-  const ctx = { state, today, esc, badge, icon, dateBR, toast, uid, save, render, navigate, openSource, downloadPDF, confirm };
+  const ctx = {
+    state, today, esc, badge, icon, dateBR, toast, uid, save, render, navigate, openSource, downloadPDF, confirm,
+    startRequestAnalysis, reviewRequest
+  };
   const operations = window.createPrototypeOperations(ctx);
   const registry = window.createPrototypeRegistry(ctx);
   ctx.createOrder = (...args) => operations.createOrder(...args);
@@ -147,6 +156,7 @@
       app.innerHTML = login();
       return;
     }
+    state.triage.forEach(startRequestAnalysis);
     const chatting = state.view === "chat";
     const content = chatting ? chat.render() : state.view === "triage" ? triagePage() :
       state.view === "registry" ? registry.render() : operations.render();
@@ -211,25 +221,37 @@
     const query = normalize(filters.search.trim());
     return state.triage.filter(request =>
       (!filters.status || request.state === filters.status) &&
-      (!filters.urgency || request.urgent === filters.urgency) &&
+      (!filters.urgency || (filters.urgency === "Vencida" ? isOverdue(request) : request.urgent === filters.urgency)) &&
       (!filters.type || request.type === filters.type) &&
       (!filters.channel || request.channel === filters.channel) &&
       normalize([request.buyer, request.id, request.summary, request.type, request.channel].join(" ")).includes(query)
     );
   }
 
+  function isOverdue(request) {
+    const lastDay = isoDate(request.dueEnd || request.due);
+    return lastDay ? lastDay < today.toISOString().slice(0, 10) : request.urgent === "Vencida";
+  }
+
   function triageCards(records = matchingRequests()) {
     if (!records.length) return '<div class="empty request-empty">Nenhuma solicitação encontrada.</div>';
     return records.map(request => {
-      const urgency = ["Alta", "Vencida"].includes(request.urgent) ? badge(request.urgent === "Alta" ? "Urgente" : "Prazo vencido", "red") : "";
+      const urgency = request.urgent === "Alta" ? badge("Urgente", "red") : "";
+      const overdue = isOverdue(request) ? badge("Prazo vencido", "red") : "";
+      const deadline = request.due && request.due !== "—" ? dateBR(request.due) : "";
+      const deadlineEnd = isoDate(request.dueEnd) ? dateBR(request.dueEnd) : "";
       return `<article class="request-card">
-        <div class="request-top"><span>${esc(request.type)}</span>${urgency || badge(request.state, request.state === "Aguardando informações" ? "amber" : "gray")}</div>
+        <div class="request-top"><span>${esc(request.type)}</span>${urgency && request.urgencyReason ? `<span title="${esc(request.urgencyReason)}" aria-label="${esc(request.urgencyReason)}">${urgency}</span>` : urgency || overdue || badge(request.state, request.state === "Aguardando informações" ? "amber" : "gray")}</div>
         <h2>${esc(request.buyer)}</h2>
         <p class="request-summary">${esc(request.summary)}</p>
-        ${request.pending && request.state !== "Encerrada" ? `<p class="request-pending"><span aria-hidden="true"></span>${esc(request.pending)}</p>` : ""}
+        ${request.result ? `<p class="request-result">${esc(request.result)}</p>` : ""}
+        ${request.pending ? `<p class="request-pending"><span aria-hidden="true"></span>${esc(request.pending)}</p>` : ""}
         <div class="request-bottom">
-          <div class="request-meta">${esc(request.id)} · ${esc(request.channel)}${request.sample ? " · Amostra" : ""}${request.due && request.due !== "—" ? '<span>Prazo ' + esc(dateBR(request.due)) + '</span>' : ""}${urgency ? '<span>' + esc(request.state) + '</span>' : ""}</div>
-          <button class="request-link" data-ui="request" data-id="${esc(request.id)}">${request.origin === "pedido" ? "Abrir chat sobre esse pedido" : "Abrir chat"} ${icon("arrow-right")}</button>
+          <div class="request-meta">${esc(request.id)} · ${esc(request.channel)}${request.sample ? " · Amostra" : ""}${deadline ? `<span>Prazo ${esc(deadline)}${deadlineEnd && deadlineEnd !== deadline ? " a " + esc(deadlineEnd) : ""}</span>` : ""}${urgency || overdue ? '<span>' + esc(request.state) + '</span>' : ""}${urgency && overdue ? overdue : ""}</div>
+          <div class="request-actions">
+            <button class="request-link" data-ui="request" data-id="${esc(request.id)}">${request.origin === "pedido" ? "Abrir chat sobre esse pedido" : "Abrir chat"} ${icon("arrow-right")}</button>
+            ${request.state === "Encerrada" ? "" : `<button class="btn small" data-ui="close-request" data-id="${esc(request.id)}">Encerrar</button>`}
+          </div>
         </div>
       </article>`;
     }).join("");
@@ -238,12 +260,46 @@
   function refreshTriage() {
     const results = document.getElementById("triage-results");
     if (!results) return;
+    const focused = document.activeElement;
+    const action = results.contains(focused) ? focused.dataset.ui : null;
+    const requestId = action ? focused.dataset.id : null;
     const records = matchingRequests();
     results.innerHTML = triageCards(records);
+    if (action && requestId) results.querySelector(`[data-ui="${CSS.escape(action)}"][data-id="${CSS.escape(requestId)}"]`)?.focus({ preventScroll: true });
     const count = document.getElementById("triage-count");
     if (count) count.textContent = requestCount(records.length);
     const filterButton = app.querySelector(".triage-filters summary");
     if (filterButton) filterButton.innerHTML = filterIcon();
+  }
+
+  function showRequestState(request) {
+    if (!dialog) refreshTriage();
+    const indicator = app.querySelector(`[data-triage-state="${CSS.escape(request.id)}"]`);
+    if (indicator) indicator.textContent = request.state;
+  }
+
+  function reviewRequest(request) {
+    if (request.state === "Encerrada") return;
+    request.state = request.pending && request.pendingBlocksDecision !== false ?
+      "Aguardando informações" : "Pronta para decisão";
+    save();
+    showRequestState(request);
+  }
+
+  function startRequestAnalysis(request) {
+    if (requestsInAnalysis.has(request.id) || !["Recebida", "Em análise"].includes(request.state)) return;
+    requestsInAnalysis.add(request.id);
+    setTimeout(() => {
+      if (request.state === "Recebida") {
+        request.state = "Em análise";
+        save();
+        showRequestState(request);
+      }
+      setTimeout(() => {
+        requestsInAnalysis.delete(request.id);
+        if (request.state === "Em análise") reviewRequest(request);
+      }, 450);
+    }, 250);
   }
 
   function showDialog(next) {
@@ -277,6 +333,7 @@
       previous?.removeAttribute("data-return-focus");
     }
     dialogReturnFocus = "";
+    refreshTriage();
   }
 
   function confirm(details) {
@@ -285,6 +342,26 @@
 
   function openSource(id) {
     showDialog({ kind: "source", id });
+  }
+
+  function closeRequest(request) {
+    if (!request || request.state === "Encerrada") return;
+    showDialog({ kind: "close-request", id: request.id });
+  }
+
+  function submitRequestClosure(form) {
+    const request = state.triage.find(entry => entry.id === dialog?.id);
+    if (!request || request.state === "Encerrada") return;
+    const result = form.elements.result.value.trim();
+    if (!result) return showFormError(form, "Informe o resultado da triagem.", form.elements.result);
+    request.result = result;
+    request.closedAt = new Date().toISOString();
+    request.state = "Encerrada";
+    save();
+    closeDialog();
+    if (state.view === "chat") render();
+    if (state.view === "triage") app.querySelector(`[data-ui="request"][data-id="${CSS.escape(request.id)}"]`)?.focus();
+    toast("Solicitação encerrada.");
   }
 
   function renderDialog() {
@@ -303,15 +380,27 @@
           ? `<object class="source-file" data="${esc(documentRecord.fileData)}" type="application/pdf"></object>`
           : `<div class="source-copy">${esc(documentRecord?.content || request?.original || "O conteúdo desta fonte está indisponível.")}</div>`}
         ${documentRecord ? `<div class="form-actions"><button class="btn" data-ui="download-source" data-id="${esc(dialog.id)}">${icon("download")} Baixar original</button></div>` : ""}`;
+    } else if (dialog.kind === "close-request") {
+      const request = state.triage.find(entry => entry.id === dialog.id);
+      title = "Encerrar solicitação";
+      body = `<form data-ui-form="close-request" class="form-grid">
+        <p class="dialog-message full">${esc(request.id)} · ${esc(request.buyer)}</p>
+        <div class="field full"><label for="request-result">Resultado da triagem</label><textarea id="request-result" name="result" rows="3" required autofocus></textarea></div>
+        ${request.pending ? `<div class="full"><span class="field-label">Pendência registrada</span><p class="dialog-message">${esc(request.pending)}</p></div>` : ""}
+        <p class="notice error full" role="alert" hidden></p>
+        <div class="form-actions full"><button class="btn" type="button" data-ui="close-dialog">Voltar</button><button class="btn primary" type="submit">Encerrar solicitação</button></div>
+      </form>`;
     } else {
       title = "Registrar mensagem";
       body = `<form data-ui-form="register" class="form-grid">
         <div class="field"><label for="request-buyer">Remetente</label><input id="request-buyer" name="buyer" required autofocus></div>
         <div class="field"><label for="request-channel">Canal</label><select id="request-channel" name="channel">${options(["E-mail", "WhatsApp", "Telegram", "Interno"])}</select></div>
         <div class="field full"><label for="request-contact">Contato de teste</label><input id="request-contact" name="contact"></div>
-        <div class="field"><label for="request-type">Tipo</label><select id="request-type" name="type">${options(["Pedido de compra", "Cotação", "Consulta documental", "Consulta financeira", "Oferta de produtor", "Comunicação administrativa", "Não identificado"])}</select></div>
-        <div class="field"><label for="request-due">Prazo informado</label><input id="request-due" name="due" type="date"></div>
+        <div class="field full"><label for="request-type">Tipo</label><select id="request-type" name="type">${options(["Pedido de compra", "Cotação", "Consulta documental", "Consulta financeira", "Oferta de produtor", "Comunicação administrativa", "Não identificado"])}</select></div>
+        <div class="field"><label for="request-due">Data de entrega ou início do prazo</label><input id="request-due" name="due" type="date"></div>
+        <div class="field"><label for="request-due-end">Fim do prazo (opcional)</label><input id="request-due-end" name="dueEnd" type="date"></div>
         <div class="field full"><label for="request-message">Mensagem</label><textarea id="request-message" name="message" rows="4" required></textarea></div>
+        <p class="notice error full" role="alert" hidden></p>
         <div class="form-actions full"><button class="btn" type="button" data-ui="close-dialog">Voltar</button><button class="btn primary">Registrar mensagem</button></div>
       </form>`;
     }
@@ -321,30 +410,49 @@
     </dialog>`;
   }
 
+  function showFormError(form, message, input) {
+    const error = form.querySelector('[role="alert"]');
+    error.hidden = false;
+    error.textContent = message;
+    input.focus();
+  }
+
   function registerRequest(form) {
     const data = new FormData(form);
     const buyer = String(data.get("buyer")).trim();
     const original = String(data.get("message")).trim();
-    if (!buyer || !original) {
-      toast("Informe o remetente e a mensagem.");
-      return;
-    }
+    if (!buyer || !original) return showFormError(form, "Informe o remetente e a mensagem.", buyer ? form.elements.message : form.elements.buyer);
+    const due = data.get("due");
+    const dueEnd = data.get("dueEnd");
+    if (dueEnd && !due) return showFormError(form, "Informe o início do prazo.", form.elements.due);
+    if (dueEnd && dueEnd < due) return showFormError(form, "O fim do prazo deve ser na mesma data ou depois do início.", form.elements.dueEnd);
     const id = uid("MSG");
     const type = data.get("type");
     const purchase = type === "Pedido de compra";
-    state.triage.unshift({
-      id, buyer, type, original, source: id, state: "Recebida", urgent: "Indeterminada",
+    const receivedDay = today.toISOString().slice(0, 10);
+    const followingDay = new Date(today.getTime() + 86400000).toISOString().slice(0, 10);
+    const declaredUrgent = /\b(?:urgente(?:mente)?|urg[eê]ncia)\b/i.test(original);
+    const urgencyReason = declaredUrgent ? "Urgência informada na mensagem." :
+      due === receivedDay ? "Entrega prevista para o dia do recebimento." :
+      due === followingDay ? "Entrega prevista para o dia seguinte ao recebimento." : "";
+    const urgent = urgencyReason ? "Alta" : due > followingDay ? "Normal" : "Indeterminada";
+    const needsDeadline = purchase && (!due || (dueEnd || due) < receivedDay);
+    const pending = needsDeadline ? (due ? "Confirme uma nova data de entrega." : "Informe o prazo de entrega.") :
+      type === "Não identificado" ? "Esclareça a intenção do remetente." : "";
+    const request = {
+      id, buyer, type, original, source: id, state: "Recebida", urgent, urgencyReason,
       channel: data.get("channel"), contact: String(data.get("contact")).trim(),
-      receivedAt: today.toISOString(), due: dateBR(data.get("due")), sample: false,
+      receivedAt: today.toISOString(), due, dueEnd, sample: false,
       origin: purchase ? "pedido" : "consulta",
       summary: original.length > 170 ? original.slice(0, 167) + "…" : original,
-      pending: "Revisar os dados recebidos.",
-      analysis: "Mensagem recebida de " + buyer + ". Confira a mensagem original e esclareça os dados necessários antes de decidir.",
+      pending, pendingField: needsDeadline ? "due" : "",
+      analysis: "Mensagem de " + buyer + " classificada como " + type.toLowerCase() + ". Confira os dados na mensagem original.",
       drafts: purchase ? ["pedido", "resposta"] : ["resposta"]
-    });
+    };
+    state.triage.unshift(request);
     closeDialog();
     save();
-    refreshTriage();
+    startRequestAnalysis(request);
     toast("Mensagem registrada na triagem.");
   }
 
@@ -440,6 +548,7 @@
         break;
       }
       case "register": showDialog({ kind: "register" }); break;
+      case "close-request": closeRequest(state.triage.find(request => request.id === button.dataset.id)); break;
       case "close-dialog": closeDialog(); break;
       case "download-source": downloadSource(button.dataset.id); break;
       case "confirm-dialog": {
@@ -464,6 +573,8 @@
       navigate("triage");
     } else if (form.dataset.uiForm === "register") {
       registerRequest(form);
+    } else if (form.dataset.uiForm === "close-request") {
+      submitRequestClosure(form);
     } else {
       modules.some(module => module.submit(form));
     }
