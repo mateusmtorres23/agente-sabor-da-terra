@@ -50,3 +50,24 @@ export const solicitationUrgencyLabels: Record<SolicitationUrgency, string> = {
   normal: 'Normal',
   indeterminada: 'Indeterminada',
 }
+export type ReceivedEntryStatus =
+  | 'pendente'
+  | 'em_processamento'
+  | 'concluida'
+  | 'falhou'
+
+export interface FailedTriageEntry {
+  id: string
+  original_text: string
+  sender: string
+  source_channel: string
+  received_at: string
+  triage_status: ReceivedEntryStatus
+  failure_reason?: string | null
+}
+
+export interface RetryTriageEntryResponse {
+  entry: FailedTriageEntry
+  solicitation: Solicitation | null
+  enqueued: boolean
+}

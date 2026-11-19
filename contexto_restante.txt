@@ -1,0 +1,929 @@
+﻿===== frontend/src/features/triage/types.ts =====
+import type { ChatMessage } from '../chat/types'
+
+export type SolicitationStatus = 'recebida' | 'em_analise' | 'finalizada'
+
+export type SolicitationType =
+  | 'pedido'
+  | 'consulta'
+  | 'oferta'
+  | 'comunicado'
+  | 'nao_identificado'
+
+export type SolicitationUrgency = 'urgente' | 'normal' | 'indeterminada'
+
+export interface Solicitation {
+  id: string
+  session_id: string
+  summary: string
+  request_type: SolicitationType
+  urgency: SolicitationUrgency
+  status: SolicitationStatus
+}
+
+export interface SolicitationSession extends Solicitation {
+  title: string
+  created_at: string
+  read_only: boolean
+  messages: ChatMessage[]
+}
+
+export interface SolicitationMessagePayload {
+  content: string
+}
+
+export const solicitationStatusLabels: Record<SolicitationStatus, string> = {
+  recebida: 'Recebida',
+  em_analise: 'Em anÃ¡lise',
+  finalizada: 'Finalizada',
+}
+
+export const solicitationTypeLabels: Record<SolicitationType, string> = {
+  pedido: 'Pedido',
+  consulta: 'Consulta',
+  oferta: 'Oferta',
+  comunicado: 'Comunicado',
+  nao_identificado: 'NÃ£o identificado',
+}
+
+export const solicitationUrgencyLabels: Record<SolicitationUrgency, string> = {
+  urgente: 'Urgente',
+  normal: 'Normal',
+  indeterminada: 'Indeterminada',
+}
+
+===== frontend/src/features/triage/triageApi.ts =====
+import { apiRequest } from '../../lib/api-client'
+import type { ChatMessage } from '../chat/types'
+
+import type {
+  Solicitation,
+  SolicitationMessagePayload,
+  SolicitationSession,
+} from './types'
+
+export function listSolicitations(
+  signal?: AbortSignal,
+): Promise<Solicitation[]> {
+  return apiRequest<Solicitation[]>('/solicitations', { signal })
+}
+
+export function getSolicitation(
+  solicitationId: string,
+  signal?: AbortSignal,
+): Promise<Solicitation> {
+  return apiRequest<Solicitation>(
+    `/solicitations/${encodeURIComponent(solicitationId)}`,
+    { signal },
+  )
+}
+
+export function openSolicitationSession(
+  solicitationId: string,
+  signal?: AbortSignal,
+): Promise<SolicitationSession> {
+  return apiRequest<SolicitationSession>(
+    `/solicitations/${encodeURIComponent(solicitationId)}/open`,
+    { method: 'POST', signal },
+  )
+}
+
+export function sendSolicitationMessage(
+  solicitationId: string,
+  payload: SolicitationMessagePayload,
+): Promise<ChatMessage> {
+  return apiRequest<ChatMessage>(
+    `/solicitations/${encodeURIComponent(solicitationId)}/messages`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+  )
+}
+
+export function finalizeSolicitation(
+  solicitationId: string,
+): Promise<Solicitation> {
+  return apiRequest<Solicitation>(
+    `/solicitations/${encodeURIComponent(solicitationId)}/finalize`,
+    { method: 'POST' },
+  )
+}
+
+===== backend/api/services/solicitation.py =====
+from uuid import UUID, uuid4
+
+from ..helpers.triage import (
+    build_triage_session_title,
+    format_triage_analysis,
+)
+from ..models.chat_message import ChatMessage, ChatMessageRole
+from ..models.chat_session import ChatSession
+from ..models.solicitation import (
+    Solicitation,
+    SolicitationStatus,
+    SolicitationType,
+    SolicitationUrgency,
+)
+from ..repositories.solicitation import SolicitationRepository
+from ..schemas.solicitation import SolicitationCreate
+
+
+class SolicitationNotFoundError(LookupError):
+    pass
+
+
+class SolicitationFinishedError(ValueError):
+    pass
+
+
+class SolicitationService:
+    def __init__(self, repository: SolicitationRepository) -> None:
+        self.repository = repository
+
+    async def persist_from_analysis(
+        self,
+        payload: SolicitationCreate,
+        *,
+        solicitation_id: UUID | None = None,
+    ) -> Solicitation:
+        analysis = payload.analysis
+        chat = await self.repository.create_session(
+            build_triage_session_title(payload.input, analysis)
+        )
+        await self.repository.add_message(
+            chat.id,
+            payload.input.message_text,
+            role=ChatMessageRole.USER,
+        )
+        await self.repository.add_message(
+            chat.id,
+            format_triage_analysis(analysis),
+            role=ChatMessageRole.AGENT,
+        )
+
+        solicitation = Solicitation(
+            id=solicitation_id or uuid4(),
+            status=SolicitationStatus.RECEIVED,
+            summary=analysis.summary,
+            request_type=SolicitationType(analysis.request_type.value),
+            urgency=SolicitationUrgency(analysis.urgency.value),
+            session_id=chat.id,
+        )
+        self.repository.add(solicitation)
+        await self.repository.session.flush()
+        return solicitation
+
+    async def create_from_analysis(
+        self,
+        payload: SolicitationCreate,
+        *,
+        solicitation_id: UUID | None = None,
+    ) -> Solicitation:
+        try:
+            solicitation = await self.persist_from_analysis(
+                payload,
+                solicitation_id=solicitation_id or payload.id,
+            )
+        except Exception:
+            await self._rollback()
+            raise
+
+        await self._commit()
+        return solicitation
+
+    async def list_solicitations(self) -> list[Solicitation]:
+        return await self.repository.list_all()
+
+    async def get_solicitation(self, solicitation_id: UUID) -> Solicitation:
+        return await self._get_solicitation(solicitation_id)
+
+    async def open_session(
+        self,
+        solicitation_id: UUID,
+    ) -> tuple[Solicitation, ChatSession, list[ChatMessage], bool]:
+        solicitation = await self._get_solicitation(
+            solicitation_id,
+            lock=True,
+        )
+
+        read_only = solicitation.status == SolicitationStatus.FINISHED
+        if solicitation.status == SolicitationStatus.RECEIVED:
+            solicitation.status = SolicitationStatus.IN_REVIEW
+
+        await self._commit()
+
+        chat = await self.repository.get_session(solicitation.session_id)
+        if chat is None:
+            raise SolicitationNotFoundError("SessÃ£o nÃ£o encontrada.")
+        messages = await self.repository.list_messages(solicitation.session_id)
+        return solicitation, chat, messages, read_only
+
+    async def add_message(
+        self,
+        solicitation_id: UUID,
+        content: str,
+    ) -> ChatMessage:
+        solicitation = await self._get_solicitation(
+            solicitation_id,
+            lock=True,
+        )
+        if solicitation.status == SolicitationStatus.FINISHED:
+            raise SolicitationFinishedError(
+                "A conversa estÃ¡ finalizada e nÃ£o aceita novas mensagens."
+            )
+
+        if solicitation.status == SolicitationStatus.RECEIVED:
+            solicitation.status = SolicitationStatus.IN_REVIEW
+
+        try:
+            message = await self.repository.add_message(
+                solicitation.session_id,
+                content,
+            )
+        except Exception:
+            await self._rollback()
+            raise
+
+        await self._commit()
+        return message
+
+    async def finalize(self, solicitation_id: UUID) -> Solicitation:
+        solicitation = await self._get_solicitation(
+            solicitation_id,
+            lock=True,
+        )
+
+        solicitation.status = SolicitationStatus.FINISHED
+        await self._commit()
+        return solicitation
+
+    async def _get_solicitation(
+        self,
+        solicitation_id: UUID,
+        *,
+        lock: bool = False,
+    ) -> Solicitation:
+        solicitation = await self.repository.get_by_id(
+            solicitation_id,
+            lock=lock,
+        )
+        if solicitation is None:
+            raise SolicitationNotFoundError("SolicitaÃ§Ã£o nÃ£o encontrada.")
+        return solicitation
+
+    async def _commit(self) -> None:
+        try:
+            await self.repository.session.commit()
+        except Exception:
+            await self._rollback()
+            raise
+
+    async def _rollback(self) -> None:
+        await self.repository.session.rollback()
+
+===== backend/api/routers/solicitation.py =====
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, status
+
+from ..dependencies import get_current_user, get_solicitation_service
+from ..schemas.chat import MessageCreate, MessageOut
+from ..schemas.solicitation import (
+    SolicitationCreate,
+    SolicitationOut,
+    SolicitationSessionOut,
+)
+from ..services.solicitation import (
+    SolicitationFinishedError,
+    SolicitationNotFoundError,
+    SolicitationService,
+)
+
+router = APIRouter(
+    prefix="/solicitations",
+    tags=["solicitations"],
+    dependencies=[Depends(get_current_user)],
+)
+
+Service = Annotated[SolicitationService, Depends(get_solicitation_service)]
+
+
+def _not_found() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="SolicitaÃ§Ã£o nÃ£o encontrada.",
+    )
+
+
+@router.post(
+    "",
+    response_model=SolicitationOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_solicitation(
+    payload: SolicitationCreate,
+    service: Service,
+) -> SolicitationOut:
+    solicitation = await service.create_from_analysis(payload)
+    return SolicitationOut.model_validate(solicitation)
+
+
+@router.get("", response_model=list[SolicitationOut])
+async def list_solicitations(service: Service) -> list[SolicitationOut]:
+    solicitations = await service.list_solicitations()
+    return [
+        SolicitationOut.model_validate(solicitation)
+        for solicitation in solicitations
+    ]
+
+
+@router.get("/{solicitation_id}", response_model=SolicitationOut)
+async def get_solicitation(
+    solicitation_id: UUID,
+    service: Service,
+) -> SolicitationOut:
+    try:
+        solicitation = await service.get_solicitation(solicitation_id)
+    except SolicitationNotFoundError as error:
+        raise _not_found() from error
+    return SolicitationOut.model_validate(solicitation)
+
+
+@router.post(
+    "/{solicitation_id}/open",
+    response_model=SolicitationSessionOut,
+)
+async def open_solicitation_session(
+    solicitation_id: UUID,
+    service: Service,
+) -> SolicitationSessionOut:
+    try:
+        solicitation, chat, messages, read_only = (
+            await service.open_session(solicitation_id)
+        )
+    except SolicitationNotFoundError as error:
+        raise _not_found() from error
+
+    return SolicitationSessionOut(
+        **SolicitationOut.model_validate(solicitation).model_dump(),
+        title=chat.title,
+        created_at=chat.created_at,
+        read_only=read_only,
+        messages=[MessageOut.model_validate(message) for message in messages],
+    )
+
+
+@router.post(
+    "/{solicitation_id}/messages",
+    response_model=MessageOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_solicitation_message(
+    solicitation_id: UUID,
+    payload: MessageCreate,
+    service: Service,
+) -> MessageOut:
+    try:
+        message = await service.add_message(solicitation_id, payload.content)
+    except SolicitationNotFoundError as error:
+        raise _not_found() from error
+    except SolicitationFinishedError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(error),
+        ) from error
+
+    return MessageOut.model_validate(message)
+
+
+@router.post(
+    "/{solicitation_id}/finalize",
+    response_model=SolicitationOut,
+)
+async def finalize_solicitation(
+    solicitation_id: UUID,
+    service: Service,
+) -> SolicitationOut:
+    try:
+        solicitation = await service.finalize(solicitation_id)
+    except SolicitationNotFoundError as error:
+        raise _not_found() from error
+    return SolicitationOut.model_validate(solicitation)
+
+===== backend/api/schemas/solicitation.py =====
+from datetime import datetime
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict
+
+from ..agents.triage.schemas import TriageAnalysis, TriageInput
+from ..models.solicitation import (
+    SolicitationStatus,
+    SolicitationType,
+    SolicitationUrgency,
+)
+from .chat import MessageOut
+
+
+class SolicitationCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID | None = None
+    input: TriageInput
+    analysis: TriageAnalysis
+
+
+class SolicitationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    session_id: UUID
+    summary: str
+    request_type: SolicitationType
+    urgency: SolicitationUrgency
+    status: SolicitationStatus
+
+
+class SolicitationSessionOut(SolicitationOut):
+    title: str
+    created_at: datetime
+    read_only: bool
+    messages: list[MessageOut]
+
+===== backend/api/repositories/solicitation.py =====
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..models.chat_message import ChatMessage, ChatMessageRole
+from ..models.chat_session import ChatSession
+from ..models.solicitation import Solicitation
+from .chat import ChatRepository
+
+
+class SolicitationRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+        self.chat_repository = ChatRepository(session)
+
+    def add(self, solicitation: Solicitation) -> None:
+        self.session.add(solicitation)
+
+    async def create_session(self, title: str) -> ChatSession:
+        chat = ChatSession(user_id=None, title=title)
+        self.session.add(chat)
+        await self.session.flush()
+        return chat
+
+    async def get_session(self, session_id: UUID) -> ChatSession | None:
+        return await self.session.get(ChatSession, session_id)
+
+    async def list_all(self) -> list[Solicitation]:
+        statement = (
+            select(Solicitation)
+            .join(ChatSession, Solicitation.session_id == ChatSession.id)
+            .order_by(ChatSession.created_at.desc(), Solicitation.id.desc())
+        )
+        return list((await self.session.scalars(statement)).all())
+
+    async def get_by_id(
+        self,
+        solicitation_id: UUID,
+        *,
+        lock: bool = False,
+    ) -> Solicitation | None:
+        statement = select(Solicitation).where(Solicitation.id == solicitation_id)
+        if lock:
+            statement = statement.with_for_update()
+        return await self.session.scalar(statement)
+
+    async def add_message(
+        self,
+        session_id: UUID,
+        content: str,
+        *,
+        role: ChatMessageRole = ChatMessageRole.USER,
+    ) -> ChatMessage:
+        return await self.chat_repository.add_message(
+            session_id,
+            content,
+            role=role,
+        )
+
+    async def list_messages(self, session_id: UUID) -> list[ChatMessage]:
+        return await self.chat_repository.list_messages(session_id)
+
+===== backend/api/repositories/chat.py =====
+from uuid import UUID
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from ..models.chat_message import ChatMessage, ChatMessageRole
+from ..models.chat_session import ChatSession
+from ..models.citation import Citation
+from ..models.document import DocumentChunk
+
+
+class ChatRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def create_session(self, user_id: UUID) -> ChatSession:
+        chat = ChatSession(user_id=user_id)
+        self.session.add(chat)
+        await self.session.flush()
+        return chat
+
+    async def list_sessions(self, user_id: UUID) -> list[ChatSession]:
+        stmt = (
+            select(ChatSession)
+            .where(ChatSession.user_id == user_id)
+            .order_by(ChatSession.created_at.desc())
+        )
+        return list((await self.session.scalars(stmt)).all())
+
+    async def get_session(self, session_id: UUID, user_id: UUID) -> ChatSession | None:
+        stmt = select(ChatSession).where(
+            ChatSession.id == session_id, ChatSession.user_id == user_id
+        )
+        return await self.session.scalar(stmt)
+
+    async def add_message(
+        self,
+        session_id: UUID,
+        content: str,
+        *,
+        role: ChatMessageRole = ChatMessageRole.USER,
+    ) -> ChatMessage:
+        next_position = await self.session.scalar(
+            select(func.coalesce(func.max(ChatMessage.position), 0) + 1)
+            .where(ChatMessage.session_id == session_id)
+        )
+        msg = ChatMessage(
+            session_id=session_id,
+            content=content,
+            role=role,
+            position=next_position,
+            citations=[],
+        )
+        self.session.add(msg)
+        await self.session.flush()
+        return msg
+
+
+    async def add_citation(self, message_id: UUID, chunk_id: UUID) -> Citation:
+        citation = Citation(message_id=message_id, chunk_id=chunk_id)
+        self.session.add(citation)
+        await self.session.flush()
+        return citation
+
+    async def list_messages(self, session_id: UUID) -> list[ChatMessage]:
+        stmt = (
+            select(ChatMessage)
+            .where(ChatMessage.session_id == session_id)
+            .options(
+                selectinload(ChatMessage.citations)
+                .selectinload(Citation.chunk)
+                .selectinload(DocumentChunk.document)
+            )
+            .order_by(
+                ChatMessage.position.asc(),
+                ChatMessage.created_at.asc(),
+                ChatMessage.id.asc(),
+            )
+        )
+        return list((await self.session.scalars(stmt)).all())
+===== backend/api/helpers/triage/formatter.py =====
+from ...agents.triage.schemas import TriageAnalysis, TriageInput
+from ...models.solicitation import SolicitationType, SolicitationUrgency
+from .dates import format_date, format_text_dates
+from .deadlines import deadline_lines
+from .details import additional_intent_lines, contact_lines
+from .documents import document_lines
+from .items import item_lines
+from .pending import pending_lines
+from .requirements import requirement_lines
+
+_TYPE_LABELS = {
+    SolicitationType.ORDER: "Pedido",
+    SolicitationType.CONSULTATION: "Consulta",
+    SolicitationType.OFFER: "Oferta",
+    SolicitationType.NOTICE: "Comunicado",
+    SolicitationType.UNIDENTIFIED: "NÃ£o identificado",
+}
+
+_URGENCY_LABELS = {
+    SolicitationUrgency.URGENT: "Urgente",
+    SolicitationUrgency.NORMAL: "Normal",
+    SolicitationUrgency.UNDETERMINED: "Indeterminada",
+}
+
+
+def build_triage_session_title(
+    payload: TriageInput,
+    analysis: TriageAnalysis,
+) -> str:
+    source = payload.source_id or analysis.summary
+    return source[:120]
+
+
+def format_triage_analysis(analysis: TriageAnalysis) -> str:
+    request_type = SolicitationType(analysis.request_type.value)
+    urgency = SolicitationUrgency(analysis.urgency.value)
+
+    lines = [
+        "AnÃ¡lise inicial da triagem",
+        f"Resumo: {format_text_dates(analysis.summary)}",
+        f"Tipo da intenÃ§Ã£o principal: {_TYPE_LABELS[request_type]}",
+        f"UrgÃªncia: {_URGENCY_LABELS[urgency]}",
+        f"Motivo da urgÃªncia: {format_text_dates(analysis.urgency_reason)}",
+        (
+            "Data de recebimento considerada: "
+            f"{format_date(analysis.received_date_reference)}"
+        ),
+    ]
+    lines.extend(additional_intent_lines(analysis))
+
+    extracted = analysis.extracted_data
+    lines.extend(contact_lines(extracted))
+    lines.extend(deadline_lines(extracted.deadlines))
+    lines.extend(item_lines(extracted.items))
+    lines.extend(requirement_lines(extracted.requirements))
+    lines.extend(document_lines(extracted))
+    lines.extend(pending_lines(analysis.pending_items))
+    return "\n".join(lines)
+
+===== backend/api/app.py =====
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from .config import get_cors_allowed_origins
+from .routers import (
+    auth,
+    chat,
+    document,
+    order,
+    producer,
+    product,
+    solicitation,
+)
+
+fastapi_app = FastAPI(title="Sabor da Terra API")
+
+fastapi_app.include_router(auth.router)
+fastapi_app.include_router(chat.router)
+fastapi_app.include_router(document.router)
+fastapi_app.include_router(order.router)
+fastapi_app.include_router(product.router)
+fastapi_app.include_router(producer.router)
+fastapi_app.include_router(solicitation.router)
+
+app = CORSMiddleware(
+    fastapi_app,
+    allow_origins=get_cors_allowed_origins(),
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
+    expose_headers=["Content-Disposition"],
+)
+
+===== backend/api/dependencies.py =====
+from threading import Lock
+from typing import Annotated
+
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from google.cloud.storage import Client
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from . import database
+from .config import (
+    get_document_storage_backend,
+    get_document_storage_bucket,
+    get_document_storage_dir,
+)
+from .database import get_db
+from .models.user import User
+from .repositories.chat import ChatRepository
+from .repositories.document import DocumentRepository
+from .repositories.order import OrderRepository
+from .repositories.producer import ProducerRepository
+from .repositories.product import ProductRepository
+from .repositories.solicitation import SolicitationRepository
+from .repositories.user import UserRepository
+from .services.auth import AuthService, InvalidAccessTokenError
+from .services.chat import ChatService
+from .services.document import DocumentService
+from .services.order import OrderService
+from .services.producer import ProducerService
+from .services.product import ProductService
+from .services.solicitation import SolicitationService
+from .services.user import UserService
+from .storage.base import DocumentStorage
+from .storage.gcs import GCSDocumentStorage
+from .storage.local import LocalDocumentStorage
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+_gcs_client_lock = Lock()
+_gcs_client: Client | None = None
+
+
+def _get_gcs_client() -> Client:
+    global _gcs_client
+
+    with _gcs_client_lock:
+        if _gcs_client is None:
+            _gcs_client = Client()
+
+        return _gcs_client
+
+
+def _build_auth_service(session: AsyncSession) -> AuthService:
+    user_repository = UserRepository(session)
+    user_service = UserService(user_repository)
+    return AuthService(user_service)
+
+
+def get_auth_service(
+    session: Annotated[AsyncSession, Depends(get_db, scope="function")],
+) -> AuthService:
+    return _build_auth_service(session)
+
+
+def get_document_storage() -> DocumentStorage:
+    if get_document_storage_backend() == "local":
+        return LocalDocumentStorage(get_document_storage_dir())
+
+    bucket_name = get_document_storage_bucket()
+    return GCSDocumentStorage(_get_gcs_client().bucket(bucket_name))
+
+
+def get_document_service(
+    session: Annotated[AsyncSession, Depends(get_db, scope="function")],
+    storage: Annotated[DocumentStorage, Depends(get_document_storage)],
+) -> DocumentService:
+    return DocumentService(DocumentRepository(session), storage)
+
+
+def get_chat_service(
+    session: Annotated[AsyncSession, Depends(get_db, scope="function")],
+) -> ChatService:
+    return ChatService(ChatRepository(session))
+
+
+def get_product_service(
+    session: Annotated[AsyncSession, Depends(get_db, scope="function")],
+) -> ProductService:
+    return ProductService(ProductRepository(session))
+
+
+def get_producer_service(
+    session: Annotated[AsyncSession, Depends(get_db, scope="function")],
+) -> ProducerService:
+    return ProducerService(ProducerRepository(session))
+
+
+async def get_current_user(
+    token: Annotated[str, Depends(oauth2_scheme)],
+) -> User:
+    session_maker = database.get_session_maker()
+
+    try:
+        async with session_maker() as session:
+            user = await _build_auth_service(session).get_current_user(token)
+    except InvalidAccessTokenError as error:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials.",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from error
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return user
+
+
+def get_order_service(
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> OrderService:
+    repository = OrderRepository(session)
+    return OrderService(repository)
+
+
+def get_solicitation_service(
+    session: Annotated[AsyncSession, Depends(get_db, scope="function")],
+) -> SolicitationService:
+    return SolicitationService(SolicitationRepository(session))
+
+
+===== backend/api/config.py =====
+
+import os
+from pathlib import Path
+from typing import Literal
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
+DEFAULT_DOCUMENT_UPLOAD_MAX_BYTES = 10 * 1024**2
+MAX_DOCUMENT_UPLOAD_BYTES = 30 * 1024**2
+
+
+def get_document_upload_max_bytes() -> int:
+    max_bytes = globals()["MAX_DOCUMENT_UPLOAD_BYTES"]
+
+    configured = os.getenv("DOCUMENT_UPLOAD_MAX_BYTES")
+    if configured is None:
+        return DEFAULT_DOCUMENT_UPLOAD_MAX_BYTES
+
+    error_message = (
+        f"DOCUMENT_UPLOAD_MAX_BYTES must be between 1 and {max_bytes}."
+    )
+    try:
+        limit = int(configured)
+    except ValueError as error:
+        raise RuntimeError(error_message) from error
+
+    if not 1 <= limit <= max_bytes:
+        raise RuntimeError(error_message)
+
+    return limit
+
+
+def get_database_url() -> str:
+    url = os.getenv("DATABASE_URL")
+    if not url or not url.strip():
+        raise RuntimeError("DATABASE_URL must be set.")
+    return url.strip()
+
+
+def get_cors_allowed_origins() -> list[str]:
+    configured_origins = os.getenv("CORS_ALLOWED_ORIGINS", "")
+    return [
+        origin.strip()
+        for origin in configured_origins.split(",")
+        if origin.strip()
+    ]
+
+
+def get_document_storage_backend() -> Literal["local", "gcs"]:
+    backend = os.getenv("DOCUMENT_STORAGE_BACKEND", "local").strip()
+    if backend == "local" or backend == "gcs":
+        return backend
+    raise RuntimeError("DOCUMENT_STORAGE_BACKEND must be 'local' or 'gcs'.")
+
+
+def get_document_storage_dir() -> Path:
+    directory = os.getenv("DOCUMENT_STORAGE_DIR", "").strip()
+    if not directory:
+        raise RuntimeError("DOCUMENT_STORAGE_DIR must be set.")
+    return Path(directory)
+
+
+def get_document_storage_bucket() -> str:
+    bucket = os.getenv("DOCUMENT_STORAGE_BUCKET", "").strip()
+    if not bucket:
+        raise RuntimeError("DOCUMENT_STORAGE_BUCKET must be set.")
+    return bucket
+
+===== backend/pyproject.toml =====
+[project]
+name = "backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.20.1",
+    "asyncpg>=0.32.0",
+    "fastapi>=0.163.1",
+    "google-adk>=2.14.1",
+    "google-cloud-storage>=3.17.1",
+    "pwdlib[argon2]>=0.4.2",
+    "pyjwt>=2.15.1",
+    "python-multipart>=0.0.33",
+    "sqlalchemy[asyncio]>=2.1.8",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.5.0",
+    "ruff>=0.17.5",
+    "testcontainers[postgres]>=4.15.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
+

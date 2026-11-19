@@ -1,6 +1,5 @@
 from enum import StrEnum
-from uuid import UUID, uuid4
-
+from uuid import UUID
 from sqlalchemy import Enum, ForeignKey, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -37,9 +36,9 @@ class Solicitation(Base):
     )
 
     id: Mapped[UUID] = mapped_column(
-        Uuid,
-        primary_key=True,
-        default=uuid4,
+    Uuid,
+    ForeignKey("received_entries.id", ondelete="RESTRICT"),
+    primary_key=True,
     )
 
     status: Mapped[SolicitationStatus] = mapped_column(

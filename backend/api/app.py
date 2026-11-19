@@ -11,6 +11,7 @@ from .routers import (
     producer,
     product,
     solicitation,
+    triage,
 )
 
 fastapi_app = FastAPI(title="Sabor da Terra API")
@@ -22,7 +23,7 @@ fastapi_app.include_router(order.router)
 fastapi_app.include_router(product.router)
 fastapi_app.include_router(producer.router)
 fastapi_app.include_router(solicitation.router)
-
+fastapi_app.include_router(triage.router)
 app = CORSMiddleware(
     fastapi_app,
     allow_origins=get_cors_allowed_origins(),

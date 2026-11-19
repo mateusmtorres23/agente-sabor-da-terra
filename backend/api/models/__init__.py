@@ -9,6 +9,7 @@ from .producer_product import ProducerProduct
 from .product import Product
 from .solicitation import Solicitation
 from .user import User
+from .received_entry import ReceivedEntry, ReceivedEntryStatus
 
 __all__ = [
     "Base",
@@ -23,4 +24,6 @@ __all__ = [
     "Product",
     "Solicitation",
     "User",
+    "ReceivedEntry",
+    "ReceivedEntryStatus",	
 ]

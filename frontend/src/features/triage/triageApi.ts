@@ -2,6 +2,8 @@ import { apiRequest } from '../../lib/api-client'
 import type { ChatMessage } from '../chat/types'
 
 import type {
+  FailedTriageEntry,
+  RetryTriageEntryResponse,
   Solicitation,
   SolicitationMessagePayload,
   SolicitationSession,
@@ -51,6 +53,21 @@ export function finalizeSolicitation(
 ): Promise<Solicitation> {
   return apiRequest<Solicitation>(
     `/solicitations/${encodeURIComponent(solicitationId)}/finalize`,
+    { method: 'POST' },
+  )
+}
+
+export function listFailedTriageEntries(
+  signal?: AbortSignal,
+): Promise<FailedTriageEntry[]> {
+  return apiRequest<FailedTriageEntry[]>('/triage/entries/failed', { signal })
+}
+
+export function retryFailedTriageEntry(
+  entryId: string,
+): Promise<RetryTriageEntryResponse> {
+  return apiRequest<RetryTriageEntryResponse>(
+    `/triage/entries/${encodeURIComponent(entryId)}/retry`,
     { method: 'POST' },
   )
 }

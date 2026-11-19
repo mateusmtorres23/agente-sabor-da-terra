@@ -5,7 +5,9 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from google.cloud.storage import Client
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from fastapi import Header
+from google.auth.transport import requests as google_auth_requests
+from google.oauth2 import id_token as google_id_token
 from . import database
 from .config import (
     get_document_storage_backend,
@@ -130,3 +132,84 @@ def get_solicitation_service(
 ) -> SolicitationService:
     return SolicitationService(SolicitationRepository(session))
 
+from .config import (
+    get_cloud_tasks_queue_path,
+    get_triage_queue_backend,
+    get_triage_worker_service_account,
+    get_triage_worker_token,
+    get_triage_worker_url,
+)
+from .services.triage import TriageWorkflowService
+from .tasks.triage_queue import (
+    CloudTasksTriageQueue,
+    DisabledTriageQueue,
+    TriageTaskQueue,
+)
+
+
+def get_triage_task_queue() -> TriageTaskQueue | None:
+    backend = get_triage_queue_backend()
+    if backend == "inline":
+        return None
+    if backend == "disabled":
+        return DisabledTriageQueue()
+    return CloudTasksTriageQueue(
+        queue_path=get_cloud_tasks_queue_path(),
+        worker_base_url=get_triage_worker_url(),
+        service_account_email=get_triage_worker_service_account(),
+    )
+
+
+def get_triage_workflow_service(
+    session: Annotated[AsyncSession, Depends(get_db, scope="function")],
+    task_queue: Annotated[TriageTaskQueue | None, Depends(get_triage_task_queue)],
+) -> TriageWorkflowService:
+    return TriageWorkflowService(session, task_queue=task_queue)
+
+
+async def verify_triage_worker_auth(
+    authorization: Annotated[str | None, Header()] = None,
+    x_triage_worker_token: Annotated[str | None, Header()] = None,
+) -> None:
+    """Aceita token interno compartilhado, OIDC do Cloud Tasks/Scheduler ou JWT de funcionário."""
+    configured_token = get_triage_worker_token()
+    if configured_token and x_triage_worker_token == configured_token:
+        return
+
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Autenticação obrigatória para acionar a triagem.",
+        )
+
+    bearer_token = authorization.removeprefix("Bearer ").strip()
+    if configured_token and bearer_token == configured_token:
+        return
+
+    # 1) Tenta validar como JWT de funcionário da aplicação
+    session_maker = database.get_session_maker()
+    try:
+        async with session_maker() as session:
+            user = await _build_auth_service(session).get_current_user(bearer_token)
+            if user is not None:
+                return
+    except InvalidAccessTokenError:
+        pass
+
+    # 2) Tenta validar como token OIDC emitido pelo Google Cloud Tasks / Scheduler
+    try:
+        audience = get_triage_worker_url()
+        claims = google_id_token.verify_oauth2_token(
+            bearer_token,
+            google_auth_requests.Request(),
+            audience=audience,
+        )
+        expected_sa = os.getenv("TRIAGE_WORKER_SERVICE_ACCOUNT_EMAIL", "").strip()
+        if expected_sa and claims.get("email") != expected_sa:
+            raise ValueError("Service account mismatch.")
+        return
+    except Exception as error:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Credenciais inválidas para processamento de triagem.",
+        ) from error

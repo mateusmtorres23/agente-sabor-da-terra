@@ -67,3 +67,40 @@ def get_document_storage_bucket() -> str:
     if not bucket:
         raise RuntimeError("DOCUMENT_STORAGE_BUCKET must be set.")
     return bucket
+def get_triage_queue_backend() -> Literal["cloud_tasks", "inline", "disabled"]:
+    backend = os.getenv("TRIAGE_QUEUE_BACKEND", "inline").strip()
+    if backend in {"cloud_tasks", "inline", "disabled"}:
+        return backend  # type: ignore[return-value]
+    raise RuntimeError(
+        "TRIAGE_QUEUE_BACKEND must be 'cloud_tasks', 'inline', or 'disabled'."
+    )
+
+
+def get_cloud_tasks_queue_path() -> str:
+    project = os.getenv("GOOGLE_CLOUD_PROJECT", "").strip()
+    location = os.getenv("CLOUD_TASKS_LOCATION", "us-central1").strip()
+    queue = os.getenv("CLOUD_TASKS_QUEUE", "triage-queue").strip()
+    if not project:
+        raise RuntimeError("GOOGLE_CLOUD_PROJECT must be set for Cloud Tasks.")
+    return f"projects/{project}/locations/{location}/queues/{queue}"
+
+
+def get_triage_worker_url() -> str:
+    base_url = os.getenv("TRIAGE_WORKER_BASE_URL", "").strip().rstrip("/")
+    if not base_url:
+        raise RuntimeError("TRIAGE_WORKER_BASE_URL must be set for Cloud Tasks.")
+    return base_url
+
+
+def get_triage_worker_service_account() -> str:
+    email = os.getenv("TRIAGE_WORKER_SERVICE_ACCOUNT_EMAIL", "").strip()
+    if not email:
+        raise RuntimeError(
+            "TRIAGE_WORKER_SERVICE_ACCOUNT_EMAIL must be set for Cloud Tasks."
+        )
+    return email
+
+
+def get_triage_worker_token() -> str | None:
+    token = os.getenv("TRIAGE_WORKER_TOKEN", "").strip()
+    return token or None
