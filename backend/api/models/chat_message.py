@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
-
+from .lot_draft import LotDraft
 from sqlalchemy import (
     DateTime,
     Enum,
@@ -67,5 +67,10 @@ class ChatMessage(Base):
 
     citations: Mapped[list["Citation"]] = relationship(
         back_populates="message",
+        cascade="all, delete-orphan",
+    )
+    lot_draft: Mapped["LotDraft | None"] = relationship(
+        back_populates="message",
+        uselist=False,
         cascade="all, delete-orphan",
     )

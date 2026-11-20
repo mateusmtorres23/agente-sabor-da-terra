@@ -8,6 +8,8 @@ from ..models.chat_message import ChatMessage, ChatMessageRole
 from ..models.chat_session import ChatSession
 from ..models.citation import Citation
 from ..models.document import DocumentChunk
+from ..models.lot import Lot
+from ..models.lot_draft import LotDraft
 
 
 class ChatRepository:
@@ -34,6 +36,12 @@ class ChatRepository:
         )
         return await self.session.scalar(stmt)
 
+    async def get_session_for_user(
+        self, session_id: UUID, user_id: UUID
+    ) -> ChatSession | None:
+        """Usado pelo LotDraftService para validar que a conversa é do usuário."""
+        return await self.get_session(session_id, user_id)
+
     async def add_message(
         self,
         session_id: UUID,
@@ -51,11 +59,11 @@ class ChatRepository:
             role=role,
             position=next_position,
             citations=[],
+            lot_draft=None,
         )
         self.session.add(msg)
         await self.session.flush()
         return msg
-
 
     async def add_citation(self, message_id: UUID, chunk_id: UUID) -> Citation:
         citation = Citation(message_id=message_id, chunk_id=chunk_id)
@@ -70,7 +78,14 @@ class ChatRepository:
             .options(
                 selectinload(ChatMessage.citations)
                 .selectinload(Citation.chunk)
-                .selectinload(DocumentChunk.document)
+                .selectinload(DocumentChunk.document),
+                selectinload(ChatMessage.lot_draft).selectinload(LotDraft.order),
+                selectinload(ChatMessage.lot_draft)
+                .selectinload(LotDraft.lot)
+                .selectinload(Lot.producer),
+                selectinload(ChatMessage.lot_draft)
+                .selectinload(LotDraft.lot)
+                .selectinload(Lot.item),
             )
             .order_by(
                 ChatMessage.position.asc(),

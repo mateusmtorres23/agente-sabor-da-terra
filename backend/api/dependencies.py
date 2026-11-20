@@ -5,7 +5,8 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from google.cloud.storage import Client
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from .repositories.lot_draft import LotDraftRepository
+from .services.lot_draft import LotDraftService
 from . import database
 from .config import (
     get_document_storage_backend,
@@ -150,3 +151,13 @@ def get_solicitation_service(
 ) -> SolicitationService:
     return SolicitationService(SolicitationRepository(session))
 
+def get_lot_draft_service(
+    session: Annotated[AsyncSession, Depends(get_db, scope="function")],
+    lot_service: Annotated[LotService, Depends(get_lot_service)],
+) -> LotDraftService:
+    return LotDraftService(
+        draft_repository=LotDraftRepository(session),
+        chat_repository=ChatRepository(session),
+        order_repository=OrderRepository(session),
+        lot_service=lot_service,
+    )

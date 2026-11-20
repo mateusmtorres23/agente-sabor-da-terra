@@ -11,7 +11,7 @@ from .producer_product import ProducerProduct
 from .product import Product
 from .solicitation import Solicitation
 from .user import User
-
+from .lot_draft import LotDraft
 __all__ = [
     "Base",
     "ChatMessage",
@@ -27,4 +27,5 @@ __all__ = [
     "Product",
     "Solicitation",
     "User",
+    "LotDraft"
 ]

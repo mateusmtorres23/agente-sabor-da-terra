@@ -12,6 +12,7 @@ from pydantic import (
 )
 
 from ..models.chat_message import ChatMessageRole
+from .lot_draft import LotDraftOut, build_lot_draft_out
 
 
 class MessageCreate(BaseModel):
@@ -78,6 +79,7 @@ class MessageOut(BaseModel):
     content: str
     created_at: datetime
     citations: list[CitationOut] = Field(default_factory=list)
+    lot_draft: LotDraftOut | None = None
 
     @field_validator("role", mode="before")
     @classmethod
@@ -85,6 +87,13 @@ class MessageOut(BaseModel):
         return {ChatMessageRole.USER: "user", ChatMessageRole.AGENT: "assistant"}.get(
             role, role
         )
+
+    @field_validator("lot_draft", mode="before")
+    @classmethod
+    def serialize_lot_draft(cls, value: Any) -> Any:
+        if value is None or isinstance(value, (LotDraftOut, dict)):
+            return value
+        return build_lot_draft_out(value)
 
 
 class SessionOut(BaseModel):

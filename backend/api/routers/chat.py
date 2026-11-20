@@ -3,10 +3,22 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from ..dependencies import get_chat_service, get_current_user
+from ..dependencies import get_chat_service, get_current_user, get_lot_draft_service
 from ..models.user import User
 from ..schemas.chat import MessageCreate, MessageOut, SessionDetail, SessionOut
+from ..schemas.lot_draft import (
+    LotDraftAvailabilityUpdate,
+    LotDraftCreate,
+    LotDraftOut,
+    LotDraftUpdate,
+)
 from ..services.chat import ChatService, SessionNotFoundError
+from ..services.lot import LotConflictError, LotNotFoundError, LotValidationError
+from ..services.lot_draft import (
+    LotDraftNotFoundError,
+    LotDraftService,
+    LotDraftValidationError,
+)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -68,3 +80,87 @@ async def add_message(
         raise _not_found() from error
 
     return MessageOut.model_validate(message)
+
+
+DraftService = Annotated[LotDraftService, Depends(get_lot_draft_service)]
+
+
+def _map_draft_error(error: Exception) -> HTTPException:
+    if isinstance(error, (LotDraftNotFoundError, LotNotFoundError)):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error))
+    if isinstance(error, (LotDraftValidationError, LotValidationError)):
+        return HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(error),
+        )
+    if isinstance(error, LotConflictError):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error))
+    raise error
+
+
+@router.post(
+    "/sessions/{session_id}/lot-drafts",
+    response_model=MessageOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_lot_draft(
+    session_id: UUID,
+    payload: LotDraftCreate,
+    user: CurrentUser,
+    draft_service: DraftService,
+) -> MessageOut:
+    try:
+        message, _ = await draft_service.create_draft_message(session_id, user, payload)
+    except Exception as error:
+        raise _map_draft_error(error)
+    return MessageOut.model_validate(message)
+
+
+@router.patch(
+    "/lot-drafts/{draft_id}",
+    response_model=LotDraftOut,
+)
+async def update_lot_draft(
+    draft_id: UUID,
+    payload: LotDraftUpdate,
+    user: CurrentUser,
+    draft_service: DraftService,
+) -> LotDraftOut:
+    try:
+        draft = await draft_service.update_draft(draft_id, user, payload)
+    except Exception as error:
+        raise _map_draft_error(error)
+    return LotDraftService.to_out(draft)
+
+
+@router.post(
+    "/lot-drafts/{draft_id}/availability",
+    response_model=LotDraftOut,
+)
+async def set_lot_draft_availability(
+    draft_id: UUID,
+    payload: LotDraftAvailabilityUpdate,
+    user: CurrentUser,
+    draft_service: DraftService,
+) -> LotDraftOut:
+    try:
+        draft = await draft_service.set_availability(draft_id, user, payload)
+    except Exception as error:
+        raise _map_draft_error(error)
+    return LotDraftService.to_out(draft)
+
+
+@router.post(
+    "/lot-drafts/{draft_id}/confirm",
+    response_model=LotDraftOut,
+)
+async def confirm_lot_draft(
+    draft_id: UUID,
+    user: CurrentUser,
+    draft_service: DraftService,
+) -> LotDraftOut:
+    try:
+        draft = await draft_service.confirm_draft(draft_id, user)
+    except Exception as error:
+        raise _map_draft_error(error)
+    return LotDraftService.to_out(draft)
