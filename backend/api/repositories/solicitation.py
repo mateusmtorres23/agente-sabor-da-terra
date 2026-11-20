@@ -1,9 +1,10 @@
+from datetime import date, datetime
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models.chat_message import ChatMessage, ChatMessageRole
+from ..models.chat_message import ChatMessage, ChatMessageFlow, ChatMessageRole
 from ..models.chat_session import ChatSession
 from ..models.solicitation import Solicitation
 from .chat import ChatRepository
@@ -70,11 +71,15 @@ class SolicitationRepository:
         content: str,
         *,
         role: ChatMessageRole = ChatMessageRole.USER,
+        flow: ChatMessageFlow | str | None = None,
+        reference_received_at: datetime | date | str | None = None,
     ) -> ChatMessage:
         return await self.chat_repository.add_message(
             session_id,
             content,
             role=role,
+            flow=flow,
+            reference_received_at=reference_received_at,
         )
 
     async def list_messages(self, session_id: UUID) -> list[ChatMessage]:

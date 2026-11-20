@@ -1,11 +1,34 @@
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
 from .consultation import ConsultationResponse, ConsultationSourceItem
 from .triage import TriageAnalysis
+
+
+def _coerce_optional_id_str(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, str):
+        cleaned = value.strip()
+        return cleaned or None
+    return value
+
+
+def _coerce_required_id_str(value: Any) -> Any:
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, str):
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Field must not be blank.")
+        return cleaned
+    return value
 
 
 class OrchestratorFlow(StrEnum):
@@ -44,6 +67,11 @@ class ConversationTurn(BaseModel):
         default=None,
         description="Identificador externo da mensagem em análise neste turno, quando houver.",
     )
+
+    @field_validator("source_id", mode="before")
+    @classmethod
+    def _coerce_source_id(cls, value: Any) -> Any:
+        return _coerce_optional_id_str(value)
 
     @field_validator("content")
     @classmethod
@@ -127,7 +155,17 @@ class OrchestratorRequest(BaseModel):
         description="Histórico anterior da sessão aberta, quando retomada.",
     )
 
-    @field_validator("session_id", "message_text")
+    @field_validator("session_id", mode="before")
+    @classmethod
+    def _coerce_session_id(cls, value: Any) -> Any:
+        return _coerce_required_id_str(value)
+
+    @field_validator("source_id", mode="before")
+    @classmethod
+    def _coerce_optional_source_id(cls, value: Any) -> Any:
+        return _coerce_optional_id_str(value)
+
+    @field_validator("message_text")
     @classmethod
     def _strip_required(cls, value: str) -> str:
         stripped = value.strip()
@@ -138,6 +176,7 @@ class OrchestratorRequest(BaseModel):
 
 class OrchestratorResponse(BaseModel):
     session_id: str = Field(
+        min_length=1,
         description="Identificador da sessão de conversa atendida.",
     )
     selected_flow: Literal["triage", "consultation"] = Field(
@@ -153,3 +192,8 @@ class OrchestratorResponse(BaseModel):
         default_factory=list,
         description="Histórico atualizado da sessão atual.",
     )
+
+    @field_validator("session_id", mode="before")
+    @classmethod
+    def _coerce_response_session_id(cls, value: Any) -> Any:
+        return _coerce_required_id_str(value)

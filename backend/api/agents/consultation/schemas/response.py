@@ -1,5 +1,6 @@
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -27,6 +28,30 @@ class CitedSource(BaseModel):
         default=None,
         description="Resumo ou trecho da evidência utilizada na resposta.",
     )
+
+    @field_validator("source_id", mode="before")
+    @classmethod
+    def _coerce_cited_source_id(cls, value: Any) -> Any:
+        if isinstance(value, UUID):
+            return str(value)
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if not cleaned:
+                raise ValueError("source_id must not be blank.")
+            return cleaned
+        return value
+
+    @field_validator("document_id", mode="before")
+    @classmethod
+    def _coerce_cited_document_id(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, UUID):
+            return str(value)
+        if isinstance(value, str):
+            cleaned = value.strip()
+            return cleaned or None
+        return value
 
 
 class ConsultationGapOrDivergence(BaseModel):

@@ -228,9 +228,11 @@ def test_order_drafts_upgrade_downgrade_and_reupgrade(
 
     parent = revision.down_revision
     assert parent == "0009_create_lots"
-    assert script.get_heads() == [DRAFT_REVISION]
+    heads = script.get_heads()
+    assert len(heads) == 1
     assert DRAFT_REVISION in {
-        entry.revision for entry in script.walk_revisions()
+        entry.revision
+        for entry in script.walk_revisions(base="base", head=heads[0])
     }
 
     with PostgresContainer(

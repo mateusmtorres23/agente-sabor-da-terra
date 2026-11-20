@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from enum import StrEnum
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -63,7 +64,31 @@ class ConsultationSourceItem(BaseModel):
         description="Conteúdo textual do trecho ou dos campos do registro.",
     )
 
-    @field_validator("source_id", "document_name", "content")
+    @field_validator("source_id", mode="before")
+    @classmethod
+    def _coerce_source_id(cls, value: Any) -> Any:
+        if isinstance(value, UUID):
+            return str(value)
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if not cleaned:
+                raise ValueError("Field must not be blank.")
+            return cleaned
+        return value
+
+    @field_validator("document_id", mode="before")
+    @classmethod
+    def _coerce_document_id(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, UUID):
+            return str(value)
+        if isinstance(value, str):
+            cleaned = value.strip()
+            return cleaned or None
+        return value
+
+    @field_validator("document_name", "content")
     @classmethod
     def _strip_required_strings(cls, value: str) -> str:
         stripped = value.strip()

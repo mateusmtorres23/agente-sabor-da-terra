@@ -4,10 +4,12 @@ from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 from .lot_draft import LotDraft
 from sqlalchemy import (
+    CheckConstraint,
     DateTime,
     Enum,
     ForeignKey,
     Integer,
+    String,
     Text,
     UniqueConstraint,
     Uuid,
@@ -25,6 +27,11 @@ class ChatMessageRole(StrEnum):
     AGENT = "AGENT"
 
 
+class ChatMessageFlow(StrEnum):
+    TRIAGE = "triage"
+    CONSULTATION = "consultation"
+
+
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
     __table_args__ = (
@@ -32,6 +39,10 @@ class ChatMessage(Base):
             "session_id",
             "position",
             name="uq_chat_messages_session_position",
+        ),
+        CheckConstraint(
+            "flow IS NULL OR flow IN ('triage', 'consultation')",
+            name="ck_chat_messages_flow",
         ),
     )
 
@@ -57,6 +68,16 @@ class ChatMessage(Base):
 
     position: Mapped[int] = mapped_column(
         Integer, nullable=False
+    )
+
+    flow: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+    )
+
+    reference_received_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(
