@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 
+import { ApiError } from '../../../lib/api-client'
+import { apiErrorDetail } from '../../orders/orderHelpers'
 import type { OrderRecord } from '../../orders/ordersApi'
 import type { Producer } from '../../registry/types'
 import {
@@ -26,6 +28,36 @@ function formatDeadline(deadline: LotDraft['order_deadline']): string {
     return `${deadline.delivery_start_date} a ${deadline.delivery_end_date}`
   }
   return deadline.delivery_start_date
+}
+
+function normalizeQuantityForCompare(value: string | null | undefined): string {
+  const trimmed = (value ?? '').trim()
+  if (!trimmed) return ''
+  const parsed = Number(trimmed)
+  return Number.isFinite(parsed) ? String(parsed) : trimmed
+}
+
+function lotDraftErrorMessage(error: unknown, fallback: string): string {
+  const detail = apiErrorDetail(error)
+  if (detail) return detail
+
+  if (error instanceof ApiError && typeof error.details === 'object' && error.details !== null) {
+    const rawDetail = (error.details as { detail?: unknown }).detail
+    if (Array.isArray(rawDetail)) {
+      const messages = rawDetail
+        .map((item) =>
+          typeof item === 'object' && item !== null && 'msg' in item && typeof item.msg === 'string'
+            ? item.msg
+            : null,
+        )
+        .filter((msg): msg is string => Boolean(msg))
+      if (messages.length > 0) {
+        return messages.join(' ')
+      }
+    }
+  }
+
+  return fallback
 }
 
 export function LotDraftCard({
@@ -58,9 +90,27 @@ export function LotDraftCard({
   const selectedItem = availableItems.find((item) => item.id === itemId)
   const selectedProducer = producers.find((producer) => producer.id === producerId)
 
-  if (draft.status === 'confirmado' && draft.saved_lot) {
+  const effectiveDeadline: LotDraft['order_deadline'] = selectedOrder
+    ? {
+        delivery_start_date: selectedOrder.delivery_start_date,
+        delivery_end_date: selectedOrder.delivery_end_date,
+        cancelled: selectedOrder.cancelled,
+      }
+    : orderId
+      ? draft.order_deadline
+      : null
+
+  const hasUnsavedChanges =
+    orderId !== (draft.order_id ?? '') ||
+    itemId !== (draft.item_id ?? '') ||
+    producerId !== (draft.producer_id ?? '') ||
+    normalizeQuantityForCompare(quantity) !== normalizeQuantityForCompare(draft.quantity) ||
+    unit.trim() !== (draft.unit ?? '').trim() ||
+    deliveryDate !== (draft.delivery_date ?? '')
+
+  if (draft.status === 'confirmado') {
     const lot = draft.saved_lot
-    const targetOrderId = lot.order_id ?? draft.order_id
+    const targetOrderId = lot?.order_id ?? draft.order_id
     return (
       <section className="lot-draft-card lot-draft-confirmed" aria-label="Lote confirmado">
         <h4>Lote confirmado</h4>
@@ -68,17 +118,25 @@ export function LotDraftCard({
           <strong>Pedido:</strong> {selectedOrder?.buyer ?? targetOrderId ?? '—'}
         </p>
         <p>
-          <strong>Item:</strong> {selectedItem?.product.name ?? lot.item_id ?? '—'}
+          <strong>Item:</strong> {selectedItem?.product.name ?? lot?.item_id ?? draft.item_id ?? '—'}
         </p>
         <p>
-          <strong>Produtor:</strong> {lot.producer_name || selectedProducer?.name || '—'}
+          <strong>Produtor:</strong>{' '}
+          {lot?.producer_name || selectedProducer?.name || '—'}
         </p>
         <p>
-          <strong>Quantidade:</strong> {lot.quantity} {lot.unit ?? ''}
+          <strong>Quantidade:</strong> {lot?.quantity ?? draft.quantity ?? '—'}{' '}
+          {lot?.unit ?? draft.unit ?? ''}
         </p>
         <p>
-          <strong>Data prevista do lote:</strong> {lot.delivery_date}
+          <strong>Data prevista do lote:</strong>{' '}
+          {lot?.delivery_date ?? draft.delivery_date ?? '—'}
         </p>
+        {!lot && (
+          <p className="lot-draft-meta">
+            Autorização já processada (o lote cadastrado não está mais ativo).
+          </p>
+        )}
         {targetOrderId && (
           <button
             type="button"
@@ -109,9 +167,10 @@ export function LotDraftCard({
       onDraftUpdated(updated)
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : 'Não foi possível atualizar o rascunho de lote.',
+        lotDraftErrorMessage(
+          err,
+          'Não foi possível atualizar o rascunho de lote.',
+        ),
       )
     } finally {
       setBusy(false)
@@ -119,17 +178,22 @@ export function LotDraftCard({
   }
 
   async function handleConfirmAvailability() {
-    if (busy) return
+    if (busy || hasUnsavedChanges) return
     setBusy(true)
     setError(null)
     try {
-      const updated = await setLotDraftAvailability(draft.id, true)
+      const updated = await setLotDraftAvailability(
+        draft.id,
+        true,
+        draft.revision,
+      )
       onDraftUpdated(updated)
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : 'Não foi possível confirmar a disponibilidade.',
+        lotDraftErrorMessage(
+          err,
+          'Não foi possível confirmar a disponibilidade.',
+        ),
       )
     } finally {
       setBusy(false)
@@ -137,17 +201,18 @@ export function LotDraftCard({
   }
 
   async function handleAuthorizeRegistration() {
-    if (busy) return
+    if (busy || hasUnsavedChanges || draft.needs_date_review) return
     setBusy(true)
     setError(null)
     try {
-      const updated = await confirmLotDraft(draft.id)
+      const updated = await confirmLotDraft(draft.id, draft.revision)
       onDraftUpdated(updated)
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : 'Não foi possível cadastrar o lote. O rascunho foi preservado.',
+        lotDraftErrorMessage(
+          err,
+          'Não foi possível cadastrar o lote. O rascunho foi preservado.',
+        ),
       )
     } finally {
       setBusy(false)
@@ -164,8 +229,8 @@ export function LotDraftCard({
 
       <p className="lot-draft-meta">
         <strong>Prazo aceito pelo comprador:</strong>{' '}
-        {formatDeadline(draft.order_deadline)}
-        {selectedOrder?.cancelled ? ' (Pedido cancelado)' : ''}
+        {formatDeadline(effectiveDeadline)}
+        {effectiveDeadline?.cancelled ? ' (Pedido cancelado)' : ''}
       </p>
 
       <p className="lot-draft-meta">
@@ -173,10 +238,17 @@ export function LotDraftCard({
         {draft.availability_confirmed ? 'Confirmada' : 'Pendente'}
       </p>
 
+      {hasUnsavedChanges && (
+        <p className="lot-draft-warning" role="status">
+          Há alterações não salvas. Clique em “Salvar revisão” antes de
+          confirmar a disponibilidade ou autorizar o cadastro.
+        </p>
+      )}
+
       {draft.needs_date_review && (
         <p className="lot-draft-warning" role="status">
-          Pedido ou item alterado: revise a data prevista do lote conforme o prazo
-          aceito pelo comprador e confirme a disponibilidade.
+          Pedido ou item alterado: revise e salve a data prevista do lote conforme o
+          prazo aceito pelo comprador antes de autorizar o cadastro.
         </p>
       )}
 
@@ -284,7 +356,7 @@ export function LotDraftCard({
         <button
           type="button"
           className="chat-button"
-          disabled={busy}
+          disabled={busy || hasUnsavedChanges}
           onClick={() => void handleConfirmAvailability()}
         >
           Confirmar disponibilidade
@@ -293,7 +365,12 @@ export function LotDraftCard({
         <button
           type="button"
           className="chat-button chat-button-primary"
-          disabled={busy || !draft.availability_confirmed}
+          disabled={
+            busy ||
+            hasUnsavedChanges ||
+            draft.needs_date_review ||
+            !draft.availability_confirmed
+          }
           onClick={() => void handleAuthorizeRegistration()}
         >
           Autorizar cadastro

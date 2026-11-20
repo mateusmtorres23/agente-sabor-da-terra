@@ -64,21 +64,33 @@ export function updateLotDraft(
 export function setLotDraftAvailability(
   draftId: string,
   confirmed = true,
+  expectedRevision?: number,
 ): Promise<LotDraft> {
   return apiRequest<LotDraft>(
     `/chat/lot-drafts/${encodeURIComponent(draftId)}/availability`,
     {
       method: 'POST',
-      body: JSON.stringify({ confirmed }),
+      body: JSON.stringify({
+        confirmed,
+        ...(expectedRevision !== undefined
+          ? { expected_revision: expectedRevision }
+          : {}),
+      }),
     },
   )
 }
 
-export function confirmLotDraft(draftId: string): Promise<LotDraft> {
+export function confirmLotDraft(
+  draftId: string,
+  expectedRevision?: number,
+): Promise<LotDraft> {
   return apiRequest<LotDraft>(
     `/chat/lot-drafts/${encodeURIComponent(draftId)}/confirm`,
     {
       method: 'POST',
+      ...(expectedRevision !== undefined
+        ? { body: JSON.stringify({ expected_revision: expectedRevision }) }
+        : {}),
     },
   )
 }

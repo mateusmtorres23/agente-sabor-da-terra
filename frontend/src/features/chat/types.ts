@@ -68,6 +68,7 @@ export interface LotDraft {
   needs_date_review: boolean
   lot_id: string | null
   status: 'em_revisao' | 'confirmado'
+  revision: number
   order_deadline: LotDraftOrderDeadline | null
   saved_lot: LotDraftSavedLot | null
 }
