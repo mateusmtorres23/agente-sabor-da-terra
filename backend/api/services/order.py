@@ -100,6 +100,7 @@ class OrderService:
         data: OrderCreate,
         *,
         session_id: UUID | None = None,
+        commit: bool = True,
     ) -> Order:
         try:
             products = await self._get_products(data.items)
@@ -122,7 +123,10 @@ class OrderService:
 
             self.repository.add(order)
 
-            await self.repository.session.commit()
+            if commit:
+                await self.repository.session.commit()
+            else:
+                await self.repository.session.flush()
 
             return order
 

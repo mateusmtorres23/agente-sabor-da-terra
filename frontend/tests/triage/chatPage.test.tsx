@@ -19,6 +19,12 @@ vi.mock('../../src/features/triage/triageApi', () => ({
   sendSolicitationMessage: vi.fn(),
 }))
 
+// Draft review is tested separately; avoid real HTTP in triage page tests.
+vi.mock('../../src/features/orders/orderDraftsApi', () => ({
+  getOrderDraft: vi.fn(async () => ({ draft: null, order: null })),
+  confirmOrderDraft: vi.fn(),
+}))
+
 const read = vi.mocked(openSolicitationSession)
 const send = vi.mocked(sendSolicitationMessage)
 const finalize = vi.mocked(finalizeSolicitation)

@@ -277,12 +277,13 @@ O sistema deve importar os lotes de `lotes.csv` como fornecimentos confirmados n
 
 regras de negócio:
 
-- O sistema deve preservar o identificador original de cada lote.
+- A carga deve ser executada por comando explícito durante a preparação inicial do ambiente.
+- O sistema deve preservar o identificador original de cada lote no arquivo de origem.
 - O sistema deve preservar os dados do produtor, produto, comprador e pedido histórico, a quantidade original e a unidade identificada, as datas de colheita, entrega prevista e validade, a temperatura de transporte, a inspeção visual e as observações.
-- O sistema deve identificar o arquivo e o registro de origem de cada Lote para permitir a conferência da informação.
+- A consulta aos registros históricos deve identificar o arquivo e o registro de origem utilizados.
 - O sistema deve preservar a referência do pedido histórico quando seu cadastro original estiver ausente da base.
 - O sistema deve manter como desconhecidos os dados ausentes, como a quantidade originalmente solicitada e o prazo combinado.
-- O sistema deve aplicar o RNF06 à carga dos Lotes, incluindo o reaproveitamento dos registros ao repetir a carga, a preservação dos originais e o tratamento de unidades ambíguas.
+- O sistema deve aplicar o RNF06 à carga dos Lotes, incluindo a preservação dos originais e o tratamento de unidades ambíguas.
 
 ### RF42 - Preparar rascunhos de alocações no chat
 
@@ -337,7 +338,7 @@ As restrições sanitárias e documentais adotadas pertencem ao cenário simulad
 | RNF03 | O sistema deve evitar registros duplicados em novas tentativas da mesma operação, inclusive no recebimento de mensagens, na confirmação pelo chat e no cadastro de alocações. |
 | RNF04 | O sistema deve calcular os valores financeiros a partir dos registros selecionados. O assistente deve preservar esses resultados ao redigir a resposta. |
 | RNF05 | O sistema deve validar os tokens JWT das consultas e operações internas e rejeitar acessos sem token válido. Antes de processar eventos recebidos por webhook, deve validar sua autenticidade. |
-| RNF06 | O sistema deve disponibilizar os dados e documentos fornecidos por uma carga reproduzível, preservando originais, identificadores e fontes. Deve preservar o valor e a descrição originais das quantidades. A unidade usada deve ser a explícita no registro, mesmo quando o nome da coluna indicar outra. O sistema deve sinalizar unidades ambíguas e manter essas quantidades fora de somas e conversões até esclarecê-las. Ao repetir a mesma carga, deve reaproveitar os registros existentes e manter as lacunas da fonte. |
+| RNF06 | O sistema deve disponibilizar os dados e documentos fornecidos por uma carga reproduzível, preservando originais, identificadores e fontes. Deve preservar o valor e a descrição originais das quantidades. A unidade usada deve ser a explícita no registro, mesmo quando o nome da coluna indicar outra. O sistema deve sinalizar unidades ambíguas e manter essas quantidades fora de somas e conversões até esclarecê-las. As lacunas da fonte devem ser preservadas. |
 | RNF07 | O sistema deve receber mensagens por uma interface comum de entrada, aplicando adaptadores quando necessário. |
 | RNF09 | O sistema deve preservar a versão vigente do registro quando rejeitar uma alteração. |
 | RNF10 | O sistema deve preservar análises e esclarecimentos mais recentes quando receber resultados atrasados de tentativas anteriores. |
@@ -351,7 +352,7 @@ Na apresentação, executar um script que lê as 15 mensagens de `pedidos.json`,
 
 Validar as operações dos CRUDs. Verificar o cadastro de um pedido pelo chat e a consulta de uma alocação no resumo por produtor.
 
-Carregar os 20 Lotes de `lotes.csv` e conferir os identificadores, os dados preservados e as fontes, conforme a US06. Repetir a carga da mesma base e verificar que os registros e as quantidades nos resumos permanecem iguais.
+Executar a carga inicial dos 20 Lotes de `lotes.csv` e conferir os dados importados, os identificadores originais e as fontes consultadas, conforme a US06.
 
 Consultar LOT-2026-0094 e conferir produtor, produto, quantidade, unidade, data de colheita, data prevista de entrega e referência do pedido histórico. Abrir e baixar o arquivo original pela citação. Consultar LOT-2026-0099 e verificar que a descrição "40 maços (kg)" permanece disponível, com a ambiguidade indicada e a quantidade fora de somas e conversões até esclarecimento.
 

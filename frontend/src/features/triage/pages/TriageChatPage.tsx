@@ -1,6 +1,7 @@
 import { useParams } from 'react-router-dom'
 
 import { AppShell } from '../../../components/layout/AppShell'
+import { OrderDraftPanel } from '../../orders/components/OrderDraftPanel'
 import { TriageBackLink } from '../components/TriageBackLink'
 import { TriageChatHeader } from '../components/TriageChatHeader'
 import { TriageChatState } from '../components/TriageChatState'
@@ -95,6 +96,11 @@ function TriageChatPageContent({
             somente para consulta.
           </p>
         )}
+
+        <OrderDraftPanel
+          scope={{ kind: 'triage', id: session.id }}
+          readOnly={session.read_only}
+        />
 
         <TriageConversation
           session={session}

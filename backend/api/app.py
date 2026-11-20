@@ -9,6 +9,7 @@ from .routers import (
     document,
     lot,
     order,
+    order_draft,
     producer,
     product,
     solicitation,
@@ -20,6 +21,7 @@ fastapi_app.include_router(auth.router)
 fastapi_app.include_router(chat.router)
 fastapi_app.include_router(document.router)
 fastapi_app.include_router(order.router)
+fastapi_app.include_router(order_draft.router)
 fastapi_app.include_router(product.router)
 fastapi_app.include_router(producer.router)
 fastapi_app.include_router(lot.router)

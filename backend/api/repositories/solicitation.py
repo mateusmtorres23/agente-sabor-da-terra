@@ -23,14 +23,29 @@ class SolicitationRepository:
         await self.session.flush()
         return chat
 
-    async def get_session(self, session_id: UUID) -> ChatSession | None:
-        return await self.session.get(ChatSession, session_id)
+    async def get_session(
+        self,
+        session_id: UUID,
+        *,
+        lock: bool = False,
+    ) -> ChatSession | None:
+        statement = (
+            select(ChatSession)
+            .where(ChatSession.id == session_id)
+            .execution_options(populate_existing=True)
+        )
+        if lock:
+            statement = statement.with_for_update(of=ChatSession)
+        return await self.session.scalar(statement)
 
     async def list_all(self) -> list[Solicitation]:
         statement = (
             select(Solicitation)
             .join(ChatSession, Solicitation.session_id == ChatSession.id)
-            .order_by(ChatSession.created_at.desc(), Solicitation.id.desc())
+            .order_by(
+                ChatSession.created_at.desc(),
+                Solicitation.id.desc(),
+            )
         )
         return list((await self.session.scalars(statement)).all())
 
@@ -40,7 +55,11 @@ class SolicitationRepository:
         *,
         lock: bool = False,
     ) -> Solicitation | None:
-        statement = select(Solicitation).where(Solicitation.id == solicitation_id)
+        statement = (
+            select(Solicitation)
+            .where(Solicitation.id == solicitation_id)
+            .execution_options(populate_existing=True)
+        )
         if lock:
             statement = statement.with_for_update()
         return await self.session.scalar(statement)

@@ -19,6 +19,12 @@ vi.mock('../../../src/features/chat/chatApi', () => ({
   sendChatMessage: vi.fn(),
 }))
 
+// These page tests isolate chat behavior; draft review has its own tests.
+vi.mock('../../../src/features/orders/orderDraftsApi', () => ({
+  getOrderDraft: vi.fn(async () => ({ draft: null, order: null })),
+  confirmOrderDraft: vi.fn(),
+}))
+
 export const list = vi.mocked(listChatSessions)
 export const read = vi.mocked(getChatSession)
 export const create = vi.mocked(createChatSession)

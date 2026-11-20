@@ -81,3 +81,22 @@ class OrderRepository:
             statement = statement.with_for_update(of=Order)
 
         return await self.session.scalar(statement)
+
+    async def get_by_session(
+        self,
+        session_id: UUID,
+    ) -> Order | None:
+        statement = (
+            select(Order)
+            .where(Order.session_id == session_id)
+            .options(
+                selectinload(Order.items)
+                .selectinload(OrderItem.product),
+                selectinload(Order.items)
+                .selectinload(OrderItem.lots)
+                .selectinload(Lot.producer),
+            )
+            .execution_options(populate_existing=True)
+        )
+
+        return await self.session.scalar(statement)

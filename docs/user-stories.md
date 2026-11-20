@@ -114,7 +114,6 @@ Critérios de aceitação:
 - O resumo de P004 para setembro de 2026 apresenta 300 unidades de alface e 150 maços de coentro com entrega prevista para 08/09/2026, citando LOT-2026-0094 e LOT-2026-0095 de `lotes.csv`.
 - O resumo de P004 para 08/09/2026 inclui esses dois lotes. Para 06/09/2026, data da colheita, informa que a base não contém fornecimentos com entrega prevista para aquele dia.
 - Para um pedido com prazo de 4 a 8 de novembro e um lote com entrega prevista para o dia 6, o resumo inclui o lote na consulta do dia 6 e o exclui da consulta do dia 5.
-- Repetir a carga da mesma base mantém os 20 Lotes, seus identificadores e fontes, com uma ocorrência de cada Lote e as mesmas quantidades nos resumos.
 - Após o cancelamento de um pedido, as alocações operacionais removidas deixam de aparecer nos novos resumos. Os Lotes históricos continuam disponíveis nos resumos dos respectivos períodos.
 - O resumo é acompanhado da opção "Baixar resumo em PDF". O arquivo preserva o conteúdo e as fontes exibidos.
 

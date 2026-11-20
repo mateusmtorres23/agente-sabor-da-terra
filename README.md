@@ -1,9 +1,12 @@
 # agente-sabor-da-terra
+
 Projeto da formação em Agentes de IA da Sauter em parceria com a UPE. O assistente apoia a equipe da cooperativa fictícia Sabor da Terra na triagem de solicitações, na consulta a documentos e dados operacionais e no atendimento aos produtores.
 
 - [Requisitos](docs/requisitos.md)
 - [Histórias de usuário](docs/user-stories.md)
-- [Banco de dados](docs/banco-de-dados.md)
+- [Banco de dados](docs/schemas-db.md)
 - [Infraestrutura](docs/infra.md)
-- [Integrações de mensagens](docs/intregrations.md)
+- [Desenvolvimento](docs/desenvolvimento.md)
+- [Integrações de mensagens](docs/intregracoes.md)
+- [Carga da base Facepe](docs/carga-facepe.md)
 - [Roteiro do protótipo navegável](docs/prototype/README.md)

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { AppShell } from '../../../components/layout/AppShell'
 import { ApiError } from '../../../lib/api-client'
 import { useAuth } from '../../auth/useAuth'
+import { OrderDraftPanel } from '../../orders/components/OrderDraftPanel'
 import { listOrders, type OrderRecord } from '../../orders/ordersApi'
 import { listProducers } from '../../registry/registryApi'
 import type { Producer } from '../../registry/types'
@@ -314,6 +315,10 @@ export function ChatPage() {
               producers={producers}
               onDraftUpdated={handleDraftUpdated}
             />
+          )}
+
+          {activeSessionId && (
+            <OrderDraftPanel scope={{ kind: 'chat', id: activeSessionId }} />
           )}
 
           <ChatInput

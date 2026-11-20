@@ -1,0 +1,18 @@
+.draft-review { min-width: 0; max-height: 65vh; overflow-y: auto; flex-shrink: 0; margin: 1rem; padding: 1.25rem; border: 1px solid var(--color-border, #dce5e2); border-radius: 1rem; background: var(--color-surface, white); color: var(--color-text, #132c27); }
+.draft-review header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; }
+.draft-review h2 { margin: 0; font-size: 1.1rem; }
+.draft-review fieldset { min-width: 0; margin: 1rem 0; padding: 1rem; border: 1px solid var(--color-border, #dce5e2); border-radius: .65rem; }
+.draft-review legend { padding-inline: .35rem; font-weight: 600; }
+.draft-review label { display: block; margin: .6rem 0 .35rem; }
+.draft-review input:not([type=checkbox]), .draft-review select, .draft-review textarea { width: 100%; min-width: 0; padding: .65rem; border: 1px solid var(--color-border, #cbd9d4); border-radius: .4rem; font: inherit; background: white; color: inherit; }
+.draft-review textarea { resize: vertical; }
+.draft-review .draft-review-check { display: flex; align-items: flex-start; gap: .6rem; }
+.draft-review-check input { flex-shrink: 0; margin-top: .25rem; }
+.draft-review-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: .75rem; }
+.draft-review button, .draft-review a { display: inline-block; padding: .65rem .9rem; border: 1px solid var(--color-border, #cbd9d4); border-radius: .5rem; background: white; color: inherit; font: inherit; cursor: pointer; }
+.draft-review .draft-review-primary { color: white; background: var(--color-primary, #185b45); border-color: var(--color-primary, #185b45); }
+.draft-review button:disabled { cursor: default; opacity: .55; }
+.draft-review [role=alert] { padding: .75rem; color: #982b24; background: #fff0ed; border-radius: .5rem; }
+.draft-review-notice { padding: .8rem; background: #edf5f0; border-radius: .5rem; }
+.draft-review :focus-visible { outline: 2px solid var(--color-primary, #185b45); outline-offset: 3px; }
+@media (max-width: 600px) { .draft-review { margin: .5rem; padding: .8rem; } .draft-review fieldset { padding: .65rem; } }

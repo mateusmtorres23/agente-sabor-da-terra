@@ -2,9 +2,24 @@
 
 Este pacote implementa a camada multiagente da Cooperativa Sabor da Terra com Google ADK.
 
+## Configuração do modelo
+
+O modelo padrão dos agentes é `gemini-3.8-flash`, definido em `config.py`. O modelo pode ser substituído pela variável de ambiente `GEMINI_AGENT_MODEL`, que não pode ter valor vazio quando definida.
+
+São consideradas duas modalidades de acesso aos modelos Gemini:
+
+- **Gemini Developer API:** utiliza uma chave de API.
+- **Vertex AI:** utiliza Application Default Credentials (ADC).
+
+As variáveis `GOOGLE_GENAI_USE_ENTERPRISE` e `GOOGLE_GENAI_USE_VERTEXAI` são reconhecidas pela configuração dos agentes para identificar o uso do ambiente Enterprise ou Vertex AI.
+
+Configure as credenciais e as variáveis de ambiente correspondentes à modalidade escolhida. Não inclua chaves de API ou outras credenciais em arquivos versionados.
+
+No ambiente publicado, a modalidade de acesso e o modelo serão definidos durante o provisionamento, considerando disponibilidade, cotas, custos e privacidade dos dados. Consulte a seção [Configuração dos agentes](../../../docs/infra.md#configuração-dos-agentes) da documentação de infraestrutura.
+
 ## Ponto de Entrada da Aplicação
 
-A aplicação backend (rotas FastAPI de chat e fila de triagem) utiliza **`orchestrate_request`** como ponto de entrada oficial.
+A função assíncrona **`orchestrate_request`** é o ponto de entrada oficial disponibilizado pela camada de agentes para integração com os serviços de chat e de processamento da triagem. A integração com esses serviços ainda será implementada.
 
 - **Caminho de importação principal:**
   ```python

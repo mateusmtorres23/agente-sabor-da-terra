@@ -38,7 +38,9 @@ No `GET` de verificação, confira `hub.verify_token` e devolva `hub.challenge` 
 
 ## Telegram
 
-Crie o bot com `/newbot` no BotFather e guarde o token no backend. Em `setWebhook`, informe uma URL HTTPS e configure `secret_token`. Confira o segredo no cabeçalho `X-Telegram-Bot-Api-Secret-Token` a cada chamada. Quando houver um processo contínuo, o adaptador pode usar long polling com `getUpdates`. Use um modo de recebimento por bot. [BotFather](https://core.telegram.org/bots/features#creating-a-new-bot) · [Webhook](https://core.telegram.org/bots/api#setwebhook) · [Long polling](https://core.telegram.org/bots/api#getupdates)
+Crie o bot com `/newbot` no BotFather e guarde o token no backend. Em `setWebhook`, informe uma URL HTTPS e configure `secret_token`. Confira o segredo no cabeçalho `X-Telegram-Bot-Api-Secret-Token` a cada chamada.
+
+No ambiente publicado, utilize webhooks para receber as mensagens sem depender de um processo continuamente ativo. O long polling com `getUpdates` é uma alternativa para ambientes que disponham de um processo contínuo. Use um modo de recebimento por bot. [BotFather](https://core.telegram.org/bots/features#creating-a-new-bot) · [Webhook](https://core.telegram.org/bots/api#setwebhook) · [Long polling](https://core.telegram.org/bots/api#getupdates)
 
 O adaptador do Telegram usa o bot e `message.chat.id` como contexto e `message.message_id` como identificador da mensagem.
 
@@ -52,8 +54,14 @@ Em chat privado, o primeiro contato parte do usuário. Na demonstração, o part
 
 ## Execução em nuvem
 
-Se o backend rodar no Cloud Run, a URL HTTPS do serviço pode receber os webhooks. A rota de recebimento precisa aceitar chamadas externas e validar a credencial do provedor. As rotas internas exigem a autenticação dos funcionários. Webhooks e chamadas agendadas podem iniciar o serviço a partir de zero instâncias. Para manter polling contínuo em um serviço Cloud Run, configure pelo menos uma instância mínima e CPU disponível fora das requisições. Para consultar e-mail por agendamento, o Cloud Scheduler pode acionar um serviço privado via OIDC com uma conta autorizada a invocá-lo. [HTTPS](https://docs.cloud.google.com/run/docs/triggering/https-request) · [Escalonamento](https://docs.cloud.google.com/run/docs/about-instance-autoscaling) · [Alocação de CPU](https://docs.cloud.google.com/run/docs/configuring/billing-settings) · [Agendamento](https://docs.cloud.google.com/run/docs/triggering/using-scheduler)
+O backend será publicado no Cloud Run e utilizará a URL HTTPS pública do serviço para receber os webhooks dos canais integrados. As rotas de recebimento aceitarão chamadas externas e validarão a autenticidade dos eventos conforme o mecanismo de cada provedor. As rotas destinadas aos funcionários exigirão autenticação por JWT.
+
+O Cloud Run utilizará cobrança por requisição e zero instâncias mínimas. Webhooks e chamadas agendadas poderão iniciar o serviço mesmo quando não houver instâncias ativas. As integrações deverão utilizar webhooks ou consultas agendadas, sem depender de processos contínuos de polling. [HTTPS](https://docs.cloud.google.com/run/docs/triggering/https-request) · [Escalonamento](https://docs.cloud.google.com/run/docs/about-instance-autoscaling)
+
+As chamadas do Cloud Tasks e do Cloud Scheduler utilizarão contas de serviço dedicadas e tokens OIDC. A API deverá validar esses tokens e verificar se a identidade autenticada está autorizada a executar a operação solicitada. [Cloud Tasks com Cloud Run](https://docs.cloud.google.com/run/docs/triggering/using-tasks) · [Cloud Scheduler com Cloud Run](https://docs.cloud.google.com/run/docs/triggering/using-scheduler)
 
 Configure o Cloud Scheduler para chamar periodicamente a API no Cloud Run e recuperar entradas que foram persistidas e ficaram sem enfileiramento, inclusive com a aplicação ociosa. Após um reinício, a API usa os registros persistidos para retomar o enfileiramento no Cloud Tasks.
 
-Guarde tokens e credenciais no gerenciador de segredos do ambiente. Persista os registros de entrada com seus UUIDs e estados de triagem em armazenamento durável. No Cloud Run, os arquivos escritos no contêiner são descartados quando a instância para. [Segredos](https://docs.cloud.google.com/run/docs/configuring/services/secrets) · [Armazenamento do contêiner](https://docs.cloud.google.com/run/docs/container-contract#file_system_access)
+Guarde tokens e credenciais das integrações no Secret Manager. Persista os registros de entrada com seus UUIDs e estados de triagem no PostgreSQL hospedado no Cloud SQL. No Cloud Run, os arquivos escritos no contêiner são descartados quando a instância para. [Segredos](https://docs.cloud.google.com/run/docs/configuring/services/secrets) · [Armazenamento do contêiner](https://docs.cloud.google.com/run/docs/container-contract#file_system_access)
+
+Consulte [Infraestrutura](infra.md) para conhecer a configuração dos serviços e os procedimentos previstos de provisionamento, publicação e desprovisionamento.
