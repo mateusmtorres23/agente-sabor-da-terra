@@ -40,3 +40,45 @@ export function sendChatMessage(
     },
   )
 }
+import type { LotDraft } from './types'
+
+export interface LotDraftUpdatePayload {
+  order_id?: string | null
+  item_id?: string | null
+  producer_id?: string | null
+  quantity?: string | null
+  unit?: string | null
+  delivery_date?: string | null
+}
+
+export function updateLotDraft(
+  draftId: string,
+  payload: LotDraftUpdatePayload,
+): Promise<LotDraft> {
+  return apiRequest<LotDraft>(`/chat/lot-drafts/${encodeURIComponent(draftId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function setLotDraftAvailability(
+  draftId: string,
+  confirmed = true,
+): Promise<LotDraft> {
+  return apiRequest<LotDraft>(
+    `/chat/lot-drafts/${encodeURIComponent(draftId)}/availability`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ confirmed }),
+    },
+  )
+}
+
+export function confirmLotDraft(draftId: string): Promise<LotDraft> {
+  return apiRequest<LotDraft>(
+    `/chat/lot-drafts/${encodeURIComponent(draftId)}/confirm`,
+    {
+      method: 'POST',
+    },
+  )
+}

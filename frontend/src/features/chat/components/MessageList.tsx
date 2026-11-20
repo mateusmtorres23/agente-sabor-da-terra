@@ -1,10 +1,15 @@
-
-import type { ChatMessage } from '../types'
+import type { OrderRecord } from '../../orders/ordersApi'
+import type { Producer } from '../../registry/types'
+import type { ChatMessage, LotDraft } from '../types'
 
 import { CitationList } from './CitationList'
+import { LotDraftCard } from './LotDraftCard'
 
 interface MessageListProps {
   messages: ChatMessage[]
+  orders?: OrderRecord[]
+  producers?: Producer[]
+  onDraftUpdated?: (messageId: string, updatedDraft: LotDraft) => void
   className?: string
   ariaLabel?: string
   getPresentation?: (
@@ -15,6 +20,9 @@ interface MessageListProps {
 
 export function MessageList({
   messages,
+  orders = [],
+  producers = [],
+  onDraftUpdated,
   className = 'message-list',
   ariaLabel = 'Histórico da conversa',
   getPresentation,
@@ -43,6 +51,15 @@ export function MessageList({
             </span>
 
             <p>{message.content}</p>
+
+            {isAssistant && message.lot_draft && (
+              <LotDraftCard
+                draft={message.lot_draft}
+                orders={orders}
+                producers={producers}
+                onDraftUpdated={(updated) => onDraftUpdated?.(message.id, updated)}
+              />
+            )}
 
             {isAssistant && <CitationList citations={message.citations} />}
           </article>

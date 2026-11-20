@@ -26,6 +26,7 @@ export interface ChatMessage {
   position: number
   created_at: string
   citations: Citation[]
+  lot_draft?: LotDraft | null
 }
 
 export interface ChatSessionDetail extends ChatSession {
@@ -34,4 +35,39 @@ export interface ChatSessionDetail extends ChatSession {
 
 export interface CreateMessagePayload {
   content: string
+}
+export interface LotDraftOrderDeadline {
+  delivery_start_date: string
+  delivery_end_date: string | null
+  cancelled: boolean
+}
+
+export interface LotDraftSavedLot {
+  id: string
+  order_id: string | null
+  item_id: string | null
+  producer_id: string
+  producer_name: string
+  quantity: string
+  unit: string | null
+  delivery_date: string
+  availability_confirmed: boolean | null
+}
+
+export interface LotDraft {
+  id: string
+  session_id: string
+  message_id: string
+  order_id: string | null
+  item_id: string | null
+  producer_id: string | null
+  quantity: string | null
+  unit: string | null
+  delivery_date: string | null
+  availability_confirmed: boolean
+  needs_date_review: boolean
+  lot_id: string | null
+  status: 'em_revisao' | 'confirmado'
+  order_deadline: LotDraftOrderDeadline | null
+  saved_lot: LotDraftSavedLot | null
 }
