@@ -2,15 +2,17 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
-from sqlalchemy import UniqueConstraint
+
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
+    Integer,
     Numeric,
     String,
+    UniqueConstraint,
     Uuid,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -38,6 +40,10 @@ class LotDraft(Base):
             "unit IS NULL OR unit ~ '[^[:space:]]'",
             name="ck_lot_drafts_unit_not_blank",
         ),
+        CheckConstraint(
+            "status IN ('em_revisao', 'confirmado')",
+            name="ck_lot_drafts_status_valid",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
@@ -52,17 +58,17 @@ class LotDraft(Base):
         index=True,
     )
     order_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey("orders.id", ondelete="RESTRICT"),
+        ForeignKey("orders.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
     item_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey("order_items.id", ondelete="RESTRICT"),
+        ForeignKey("order_items.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
     producer_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey("producers.id", ondelete="RESTRICT"),
+        ForeignKey("producers.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -75,6 +81,10 @@ class LotDraft(Base):
     needs_date_review: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
     )
+    status: Mapped[str] = mapped_column(
+        String(32), default="em_revisao", nullable=False
+    )
+    revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     lot_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("lots.id", ondelete="SET NULL"),
         nullable=True,

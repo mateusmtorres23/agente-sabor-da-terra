@@ -98,7 +98,13 @@ class ChatRepository:
         if lock:
             statement = statement.with_for_update(of=ChatSession)
         return await self.session.scalar(statement)
-
+    async def get_session_for_user(
+        self,
+        session_id: UUID,
+        user_id: UUID,
+    ) -> ChatSession | None:
+        return await self.get_session(session_id, user_id)
+    
     async def get_session_by_id(self, session_id: UUID) -> ChatSession | None:
         return await self.session.get(ChatSession, session_id)
 
@@ -186,12 +192,19 @@ class ChatRepository:
             .options(
                 selectinload(ChatMessage.citations)
                 .selectinload(Citation.chunk)
-                .selectinload(DocumentChunk.document)
+                .selectinload(DocumentChunk.document),
+                selectinload(ChatMessage.lot_draft).selectinload(LotDraft.order),
+                selectinload(ChatMessage.lot_draft)
+                .selectinload(LotDraft.lot)
+                .selectinload(Lot.producer),
+                selectinload(ChatMessage.lot_draft)
+                .selectinload(LotDraft.lot)
+                .selectinload(Lot.item),
             )
             .execution_options(populate_existing=True)
         )
         return await self.session.scalar(stmt)
-
+    
     async def list_messages(self, session_id: UUID) -> list[ChatMessage]:
         statement = (
             select(ChatMessage)

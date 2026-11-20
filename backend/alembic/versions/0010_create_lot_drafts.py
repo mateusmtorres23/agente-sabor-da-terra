@@ -1,7 +1,7 @@
 """create lot drafts
 
 Revision ID: 0010_create_lot_drafts
-Revises: 0009_create_lots
+Revises: e3b0b6c06f7c
 Create Date: 2026-11-19
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0010_create_lot_drafts"
-down_revision: str | Sequence[str] | None = "0009_create_lots"
+down_revision: str | Sequence[str] | None = "0010_chat_agent_metadata"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -41,6 +41,18 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.false(),
         ),
+        sa.Column(
+            "status",
+            sa.String(length=32),
+            nullable=False,
+            server_default="em_revisao",
+        ),
+        sa.Column(
+            "revision",
+            sa.Integer(),
+            nullable=False,
+            server_default="1",
+        ),
         sa.Column("lot_id", sa.Uuid(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
@@ -52,6 +64,10 @@ def upgrade() -> None:
             "unit IS NULL OR unit ~ '[^[:space:]]'",
             name="ck_lot_drafts_unit_not_blank",
         ),
+        sa.CheckConstraint(
+            "status IN ('em_revisao', 'confirmado')",
+            name="ck_lot_drafts_status_valid",
+        ),
         sa.ForeignKeyConstraint(
             ["session_id"], ["chat_sessions.id"], ondelete="CASCADE"
         ),
@@ -59,13 +75,13 @@ def upgrade() -> None:
             ["message_id"], ["chat_messages.id"], ondelete="CASCADE"
         ),
         sa.ForeignKeyConstraint(
-            ["order_id"], ["orders.id"], ondelete="RESTRICT"
+            ["order_id"], ["orders.id"], ondelete="SET NULL"
         ),
         sa.ForeignKeyConstraint(
-            ["item_id"], ["order_items.id"], ondelete="RESTRICT"
+            ["item_id"], ["order_items.id"], ondelete="SET NULL"
         ),
         sa.ForeignKeyConstraint(
-            ["producer_id"], ["producers.id"], ondelete="RESTRICT"
+            ["producer_id"], ["producers.id"], ondelete="SET NULL"
         ),
         sa.ForeignKeyConstraint(
             ["lot_id"], ["lots.id"], ondelete="SET NULL"

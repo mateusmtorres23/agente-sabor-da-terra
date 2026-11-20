@@ -1,8 +1,7 @@
-from uuid import UUID
+﻿from uuid import UUID
 
 from ..models.chat_message import ChatMessage, ChatMessageRole
 from ..models.chat_session import ChatSession
-from ..models.lot import Lot
 from ..models.lot_draft import LotDraft
 from ..models.user import User
 from ..repositories.chat import ChatRepository
@@ -11,10 +10,9 @@ from ..repositories.order import OrderRepository
 from ..schemas.lot import LotCreate
 from ..schemas.lot_draft import (
     LotDraftAvailabilityUpdate,
+    LotDraftConfirmRequest,
     LotDraftCreate,
-    LotDraftOrderDeadlineOut,
     LotDraftOut,
-    LotDraftSavedLotOut,
     LotDraftUpdate,
     build_lot_draft_out,
 )
@@ -26,6 +24,10 @@ class LotDraftNotFoundError(LookupError):
 
 
 class LotDraftValidationError(ValueError):
+    pass
+
+
+class LotDraftConflictError(RuntimeError):
     pass
 
 
@@ -75,6 +77,8 @@ class LotDraftService:
             delivery_date=payload.delivery_date,
             availability_confirmed=bool(payload.availability_confirmed),
             needs_date_review=False,
+            status="em_revisao",
+            revision=1,
         )
         self.draft_repository.add(draft)
         await self.draft_repository.session.commit()
@@ -91,9 +95,9 @@ class LotDraftService:
         payload: LotDraftUpdate,
     ) -> LotDraft:
         draft = await self._get_locked_draft(draft_id, user)
-        if draft.lot_id is not None:
-            raise LotDraftValidationError(
-                "Este rascunho já foi confirmado e possui um lote cadastrado."
+        if draft.status == "confirmado" or draft.lot_id is not None:
+            raise LotDraftConflictError(
+                "Este rascunho já foi autorizado e não pode mais ser editado."
             )
 
         updates = payload.model_dump(exclude_unset=True)
@@ -146,9 +150,10 @@ class LotDraftService:
 
         if order_changed or item_changed:
             draft.needs_date_review = True
-        elif "delivery_date" in updates:
+        elif "delivery_date" in updates and draft.delivery_date is not None:
             draft.needs_date_review = False
 
+        draft.revision += 1
         await self.draft_repository.session.commit()
         loaded = await self.draft_repository.get_by_id(draft.id)
         assert loaded is not None
@@ -161,23 +166,34 @@ class LotDraftService:
         payload: LotDraftAvailabilityUpdate,
     ) -> LotDraft:
         draft = await self._get_locked_draft(draft_id, user)
-        if draft.lot_id is not None:
-            raise LotDraftValidationError(
-                "Este rascunho já foi confirmado e possui um lote cadastrado."
+        if draft.status == "confirmado" or draft.lot_id is not None:
+            raise LotDraftConflictError(
+                "Este rascunho já foi autorizado e não pode mais ser alterado."
             )
 
+        self._assert_expected_revision(draft, payload.expected_revision)
+
         if payload.confirmed and (
-            draft.producer_id is None
+            draft.order_id is None
+            or draft.item_id is None
+            or draft.producer_id is None
             or draft.quantity is None
             or not draft.unit
             or draft.delivery_date is None
         ):
             raise LotDraftValidationError(
-                "Preencha produtor, quantidade, unidade e data prevista antes de "
-                "confirmar a disponibilidade."
+                "Preencha pedido, item, produtor, quantidade, unidade e data "
+                "prevista antes de confirmar a disponibilidade."
+            )
+
+        if payload.confirmed and draft.needs_date_review:
+            raise LotDraftValidationError(
+                "Revise e salve a data prevista do lote conforme o prazo do pedido "
+                "antes de confirmar a disponibilidade."
             )
 
         draft.availability_confirmed = payload.confirmed
+        draft.revision += 1
         await self.draft_repository.session.commit()
         loaded = await self.draft_repository.get_by_id(draft.id)
         assert loaded is not None
@@ -187,18 +203,33 @@ class LotDraftService:
         self,
         draft_id: UUID,
         user: User,
+        payload: LotDraftConfirmRequest | None = None,
     ) -> LotDraft:
         draft = await self._get_locked_draft(draft_id, user)
 
-        # Idempotência em cliques repetidos ou chamadas em paralelo
         if draft.lot_id is not None:
             loaded = await self.draft_repository.get_by_id(draft.id)
             assert loaded is not None
             return loaded
 
+        if draft.status == "confirmado":
+            raise LotDraftConflictError(
+                "Esta autorização já foi processada anteriormente e o lote "
+                "correspondente não está mais ativo. Crie um novo rascunho se "
+                "desejar cadastrar outro lote."
+            )
+
+        expected_revision = payload.expected_revision if payload is not None else None
+        self._assert_expected_revision(draft, expected_revision)
+
         if draft.order_id is None or draft.item_id is None:
             raise LotDraftValidationError(
                 "Selecione o pedido e o item do pedido antes de autorizar o cadastro."
+            )
+        if draft.needs_date_review:
+            raise LotDraftValidationError(
+                "Revise e salve a data prevista do lote conforme o prazo do pedido "
+                "antes de autorizar o cadastro."
             )
         if draft.producer_id is None:
             raise LotDraftValidationError(
@@ -216,7 +247,7 @@ class LotDraftService:
             )
         if not draft.availability_confirmed:
             raise LotDraftValidationError(
-                "Confirme a disponibilidade para os dados atuais antes de "
+                "Confirme a disponibilidade para os dados revisados antes de "
                 "autorizar o cadastro."
             )
 
@@ -234,7 +265,9 @@ class LotDraftService:
                 commit=False,
             )
             draft.lot_id = lot.id
+            draft.status = "confirmado"
             draft.needs_date_review = False
+            draft.revision += 1
             await self.draft_repository.session.commit()
         except (LotNotFoundError, LotValidationError, LotConflictError):
             await self.draft_repository.session.rollback()
@@ -247,12 +280,23 @@ class LotDraftService:
         assert loaded is not None
         return loaded
 
+    @staticmethod
+    def _assert_expected_revision(
+        draft: LotDraft,
+        expected_revision: int | None,
+    ) -> None:
+        if expected_revision is not None and draft.revision != expected_revision:
+            raise LotDraftConflictError(
+                "Este rascunho foi alterado por outra requisição. Revise os dados "
+                "atualizados antes de confirmar."
+            )
+
     async def _get_authorized_session(
         self,
         session_id: UUID,
         user: User,
     ) -> ChatSession:
-        session = await self.chat_repository.get_session_for_user(session_id, user.id)
+        session = await self.chat_repository.get_session(session_id, user.id)
         if session is None:
             raise LotDraftNotFoundError("Sessão de chat não encontrada.")
         return session
@@ -270,7 +314,7 @@ class LotDraftService:
         if draft is None:
             raise LotDraftNotFoundError("Rascunho de lote não encontrado.")
 
-        session = await self.chat_repository.get_session_for_user(
+        session = await self.chat_repository.get_session(
             draft.session_id,
             user.id,
         )

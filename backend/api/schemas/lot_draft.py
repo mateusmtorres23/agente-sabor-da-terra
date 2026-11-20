@@ -1,9 +1,10 @@
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
-from typing import Any
+
 
 class LotDraftCreate(BaseModel):
     model_config = ConfigDict(
@@ -103,6 +104,13 @@ class LotDraftAvailabilityUpdate(BaseModel):
             "disponibilidade_confirmada",
         ),
     )
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
+class LotDraftConfirmRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    expected_revision: int | None = Field(default=None, ge=1)
 
 
 class LotDraftOrderDeadlineOut(BaseModel):
@@ -139,6 +147,7 @@ class LotDraftOut(BaseModel):
     needs_date_review: bool
     lot_id: UUID | None
     status: str
+    revision: int
     order_deadline: LotDraftOrderDeadlineOut | None = None
     saved_lot: LotDraftSavedLotOut | None = None
     created_at: datetime
@@ -171,6 +180,12 @@ def build_lot_draft_out(draft: Any) -> LotDraftOut:
             availability_confirmed=lot.availability_confirmed,
         )
 
+    effective_status = (
+        "confirmado"
+        if (draft.status == "confirmado" or draft.lot_id is not None)
+        else "em_revisao"
+    )
+
     return LotDraftOut(
         id=draft.id,
         session_id=draft.session_id,
@@ -184,7 +199,8 @@ def build_lot_draft_out(draft: Any) -> LotDraftOut:
         availability_confirmed=draft.availability_confirmed,
         needs_date_review=draft.needs_date_review,
         lot_id=draft.lot_id,
-        status="confirmado" if draft.lot_id is not None else "em_revisao",
+        status=effective_status,
+        revision=draft.revision,
         order_deadline=order_deadline,
         saved_lot=saved_lot,
         created_at=draft.created_at,
