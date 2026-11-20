@@ -173,3 +173,7 @@ request, retrieved = await integration.prepare_triage_chat_input(
 - Para compor a persistência da resposta do assistente com a atualização do cartão de `Solicitation` na mesma transação (prevista na `#51`), passe `commit=False` a `persist_agent_response()` / `persist_orchestrator_response()`.
 - Citações cuja fonte (`chunk_id`) não tenha sido disponibilizada ao agente na consulta são descartadas em `rejected_source_ids` e nunca são persistidas em `citations`.
 - Qualquer falha na gravação da mensagem ou de uma citação desfaz a transação, preservando intacto o histórico anterior.
+
+## Rascunhos de pedidos na triagem
+
+A #15 disponibiliza `prepare_order_draft` para converter uma análise existente e `analyze_order_draft` para executar a triagem e preparar o rascunho no contrato `OrderDraftData` da #10. Consulte [Rascunhos de pedidos na triagem](../../../docs/rascunhos-triagem.md) para conhecer os parâmetros, as pendências e os testes do cenário compartilhado.
