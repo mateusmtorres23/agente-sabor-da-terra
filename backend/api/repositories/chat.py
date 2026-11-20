@@ -11,6 +11,8 @@ from ..models.chat_message import ChatMessage, ChatMessageFlow, ChatMessageRole
 from ..models.chat_session import ChatSession
 from ..models.citation import Citation
 from ..models.document import DocumentChunk
+from ..models.lot import Lot
+from ..models.lot_draft import LotDraft
 
 
 def normalize_message_reference_timestamp(
@@ -96,7 +98,13 @@ class ChatRepository:
         if lock:
             statement = statement.with_for_update(of=ChatSession)
         return await self.session.scalar(statement)
-
+    async def get_session_for_user(
+        self,
+        session_id: UUID,
+        user_id: UUID,
+    ) -> ChatSession | None:
+        return await self.get_session(session_id, user_id)
+    
     async def get_session_by_id(self, session_id: UUID) -> ChatSession | None:
         return await self.session.get(ChatSession, session_id)
 
@@ -127,6 +135,7 @@ class ChatRepository:
                 reference_received_at
             ),
             citations=[],
+            lot_draft=None,
         )
         self.session.add(message)
         await self.session.flush()
@@ -183,12 +192,19 @@ class ChatRepository:
             .options(
                 selectinload(ChatMessage.citations)
                 .selectinload(Citation.chunk)
-                .selectinload(DocumentChunk.document)
+                .selectinload(DocumentChunk.document),
+                selectinload(ChatMessage.lot_draft).selectinload(LotDraft.order),
+                selectinload(ChatMessage.lot_draft)
+                .selectinload(LotDraft.lot)
+                .selectinload(Lot.producer),
+                selectinload(ChatMessage.lot_draft)
+                .selectinload(LotDraft.lot)
+                .selectinload(Lot.item),
             )
             .execution_options(populate_existing=True)
         )
         return await self.session.scalar(stmt)
-
+    
     async def list_messages(self, session_id: UUID) -> list[ChatMessage]:
         statement = (
             select(ChatMessage)
@@ -196,7 +212,14 @@ class ChatRepository:
             .options(
                 selectinload(ChatMessage.citations)
                 .selectinload(Citation.chunk)
-                .selectinload(DocumentChunk.document)
+                .selectinload(DocumentChunk.document),
+                selectinload(ChatMessage.lot_draft).selectinload(LotDraft.order),
+                selectinload(ChatMessage.lot_draft)
+                .selectinload(LotDraft.lot)
+                .selectinload(Lot.producer),
+                selectinload(ChatMessage.lot_draft)
+                .selectinload(LotDraft.lot)
+                .selectinload(Lot.item),
             )
             .order_by(
                 ChatMessage.position.asc(),

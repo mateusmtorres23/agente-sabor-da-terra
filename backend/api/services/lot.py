@@ -44,6 +44,8 @@ class LotService:
         order_id: UUID,
         item_id: UUID,
         data: LotCreate,
+        *,
+        commit: bool = True,
     ) -> Lot:
         try:
             order = await self._get_order(order_id, lock=True)
@@ -76,7 +78,10 @@ class LotService:
                 availability_confirmed=True,
             )
             self.repository.add(lot)
-            await self._commit()
+            if commit:
+                await self._commit()
+            else:
+                await self.repository.session.flush()
             return lot
 
         except Exception:
@@ -266,10 +271,12 @@ class LotService:
                 "O saldo deste item está indeterminado. Ajuste as unidades das "
                 "alocações antes de salvar."
             )
-        if allocated + converted > item.quantity:
+        available = item.quantity - allocated
+        if converted > available:
+            formatted_available = f"{available.normalize():f}" if available != 0 else "0"
             raise LotValidationError(
-                f"A quantidade alocada ultrapassa o saldo disponível do item "
-                f"({item.quantity} {item.unit})."
+                f"A quantidade solicitada ultrapassa o saldo disponível do item "
+                f"(saldo atual: {formatted_available} {item.unit})."
             )
 
     async def _commit(self) -> None:

@@ -4,6 +4,9 @@ import { AppShell } from '../../../components/layout/AppShell'
 import { ApiError } from '../../../lib/api-client'
 import { useAuth } from '../../auth/useAuth'
 import { OrderDraftPanel } from '../../orders/components/OrderDraftPanel'
+import { listOrders, type OrderRecord } from '../../orders/ordersApi'
+import { listProducers } from '../../registry/registryApi'
+import type { Producer } from '../../registry/types'
 import { ChatHeader } from '../components/ChatHeader'
 import { ChatHistory } from '../components/ChatHistory'
 import { ChatInput } from '../components/ChatInput'
@@ -14,7 +17,7 @@ import {
   listChatSessions,
   sendChatMessage,
 } from '../chatApi'
-import type { ChatMessage, ChatSession } from '../types'
+import type { ChatMessage, ChatSession, LotDraft } from '../types'
 
 import './chat.css'
 
@@ -53,6 +56,8 @@ export function ChatPage() {
   const [conversations, setConversations] = useState<
     Record<string, ConversationState | undefined>
   >({})
+  const [orders, setOrders] = useState<OrderRecord[]>([])
+  const [producers, setProducers] = useState<Producer[]>([])
   const [listing, setListing] = useState(true)
   const [creating, setCreating] = useState(false)
   const [listError, setListError] = useState<string | null>(null)
@@ -148,6 +153,21 @@ export function ChatPage() {
       }
     }
 
+    async function loadCatalogContext() {
+      try {
+        const [orderList, producerList] = await Promise.all([
+          listOrders(lifetime.signal),
+          listProducers(undefined, lifetime.signal),
+        ])
+        if (lifetime.signal.aborted) return
+        setOrders(orderList)
+        setProducers(producerList)
+      } catch (error) {
+        if (lifetime.signal.aborted || expireSession(error, lifetime)) return
+      }
+    }
+
+    void loadCatalogContext()
     void loadSessions()
     return () => {
       lifetime.abort()
@@ -226,6 +246,40 @@ export function ChatPage() {
     }
   }
 
+  const handleDraftUpdated = useCallback(
+    (messageId: string, updatedDraft: LotDraft) => {
+      const sessionId = activeSessionId
+      if (!sessionId) return
+
+      const applyDraft = (list: ChatMessage[]) =>
+        list.map((msg) =>
+          msg.id === messageId ? { ...msg, lot_draft: updatedDraft } : msg,
+        )
+
+      const existingConfirmed = confirmedMessages.current.get(sessionId)
+      if (existingConfirmed) {
+        confirmedMessages.current.set(sessionId, applyDraft(existingConfirmed))
+      }
+
+      setConversations((current) => {
+        const conv = current[sessionId]
+        if (!conv) return current
+        return {
+          ...current,
+          [sessionId]: {
+            ...conv,
+            messages: applyDraft(conv.messages),
+          },
+        }
+      })
+
+      if (updatedDraft.status === 'confirmado') {
+        void listOrders().then(setOrders).catch(() => {})
+      }
+    },
+    [activeSessionId],
+  )
+
   const conversation = (activeSessionId && conversations[activeSessionId]) || emptyConversation
   const loading = conversation.loading || (!activeSessionId && (listing || creating))
   const errors = [listError, createError, conversation.loadError, conversation.sendError]
@@ -255,7 +309,12 @@ export function ChatPage() {
           {loading ? (
             <p>Carregando conversa...</p>
           ) : (
-            <MessageList messages={conversation.messages} />
+            <MessageList
+              messages={conversation.messages}
+              orders={orders}
+              producers={producers}
+              onDraftUpdated={handleDraftUpdated}
+            />
           )}
 
           {activeSessionId && (

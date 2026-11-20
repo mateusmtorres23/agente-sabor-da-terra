@@ -48,7 +48,7 @@ async def test_cors_preflight_allows_configured_origin(
     assert response.headers["access-control-allow-origin"] == (
         "http://localhost:5173"
     )
-    assert response.headers["access-control-allow-methods"] == "GET, POST, PUT, DELETE"
+    assert response.headers["access-control-allow-methods"] == "GET, POST, PUT, PATCH, DELETE"
     assert response.headers["access-control-allow-credentials"] == "true"
     assert "Authorization" in response.headers["access-control-allow-headers"]
     assert "Content-Type" in response.headers["access-control-allow-headers"]
