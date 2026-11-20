@@ -118,7 +118,7 @@ class LotDraftService:
             next_item_id = None
 
         if next_order_id is not None:
-            order = await self.order_repository.get_by_id(next_order_id, lock=False)
+            order = await self.order_repository.get_by_id(next_order_id, lock=True)
             if order is None:
                 raise LotDraftNotFoundError("Pedido não encontrado.")
             if next_item_id is not None and not any(
@@ -203,11 +203,12 @@ class LotDraftService:
         self,
         draft_id: UUID,
         user: User,
-        payload: LotDraftConfirmRequest | None = None,
+        payload: LotDraftConfirmRequest,
     ) -> LotDraft:
         draft = await self._get_locked_draft(draft_id, user)
 
         if draft.lot_id is not None:
+            await self.draft_repository.session.commit()
             loaded = await self.draft_repository.get_by_id(draft.id)
             assert loaded is not None
             return loaded
@@ -219,8 +220,7 @@ class LotDraftService:
                 "desejar cadastrar outro lote."
             )
 
-        expected_revision = payload.expected_revision if payload is not None else None
-        self._assert_expected_revision(draft, expected_revision)
+        self._assert_expected_revision(draft, payload.expected_revision)
 
         if draft.order_id is None or draft.item_id is None:
             raise LotDraftValidationError(
@@ -283,9 +283,9 @@ class LotDraftService:
     @staticmethod
     def _assert_expected_revision(
         draft: LotDraft,
-        expected_revision: int | None,
+        expected_revision: int,
     ) -> None:
-        if expected_revision is not None and draft.revision != expected_revision:
+        if draft.revision != expected_revision:
             raise LotDraftConflictError(
                 "Este rascunho foi alterado por outra requisição. Revise os dados "
                 "atualizados antes de confirmar."
@@ -306,6 +306,14 @@ class LotDraftService:
         draft_id: UUID,
         user: User,
     ) -> LotDraft:
+        preliminary = await self.draft_repository.get_by_id(
+            draft_id,
+            lock=False,
+            with_relations=False,
+        )
+        if preliminary is not None and preliminary.order_id is not None:
+            await self.order_repository.get_by_id(preliminary.order_id, lock=True)
+
         draft = await self.draft_repository.get_by_id(
             draft_id,
             lock=True,
@@ -313,6 +321,13 @@ class LotDraftService:
         )
         if draft is None:
             raise LotDraftNotFoundError("Rascunho de lote não encontrado.")
+
+        if draft.order_id is not None and (
+            preliminary is None or preliminary.order_id != draft.order_id
+        ):
+            await self.order_repository.get_by_id(draft.order_id, lock=True)
+
+        await self.draft_repository.session.refresh(draft)
 
         session = await self.chat_repository.get_session(
             draft.session_id,

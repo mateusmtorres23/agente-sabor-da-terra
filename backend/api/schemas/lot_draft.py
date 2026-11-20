@@ -1,4 +1,4 @@
-from datetime import date, datetime
+﻿from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -104,13 +104,13 @@ class LotDraftAvailabilityUpdate(BaseModel):
             "disponibilidade_confirmada",
         ),
     )
-    expected_revision: int | None = Field(default=None, ge=1)
+    expected_revision: int = Field(ge=1)
 
 
 class LotDraftConfirmRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
-    expected_revision: int | None = Field(default=None, ge=1)
+    expected_revision: int = Field(ge=1)
 
 
 class LotDraftOrderDeadlineOut(BaseModel):

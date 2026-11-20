@@ -188,11 +188,15 @@ async def test_cancel_removes_operational_lots_and_preserves_imported(
     await db_session.commit()
 
     await order_service(db_session).cancel_order(setup_order.order.id)
+    db_session.expire_all()
 
     lots = list(await db_session.scalars(select(Lot)))
-    assert imported in lots
-    assert setup_order.lot not in lots
-    assert all(lot.item_id is None for lot in lots)
+    imported_db = await db_session.get(Lot, imported.id)
+    deleted_lot_db = await db_session.get(Lot, setup_order.lot.id)
+    assert imported_db is not None
+    assert imported_db.item_id is None
+    assert deleted_lot_db is None
+    assert all(lot.item_id is None for lot in lots if lot.id in {imported.id, setup_order.lot.id})
 
 
 async def test_cancelled_order_rejects_lot_save(

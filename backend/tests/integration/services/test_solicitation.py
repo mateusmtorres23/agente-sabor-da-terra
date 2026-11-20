@@ -1,10 +1,11 @@
-from typing import Any
+﻿from typing import Any
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.helpers.triage import build_triage_session_title
 from api.models.chat_message import ChatMessage
 from api.models.chat_session import ChatSession
 from api.models.solicitation import Solicitation
@@ -53,6 +54,12 @@ async def test_create_rolls_back_every_record_when_a_write_fails(
     original_create_session = SolicitationRepository.create_session
     original_add_message = SolicitationRepository.add_message
     original_add = SolicitationRepository.add
+
+    payload_obj = SolicitationCreate.model_validate(_payload())
+    expected_title = build_triage_session_title(
+        payload_obj.input, payload_obj.analysis
+    )
+    solicitation_id = uuid4()
 
     async def fail_after_session(
         self: SolicitationRepository,
@@ -109,16 +116,23 @@ async def test_create_rolls_back_every_record_when_a_write_fails(
 
     with pytest.raises(RuntimeError, match="falha simulada"):
         await service.create_from_analysis(
-            SolicitationCreate.model_validate(_payload()),
-            solicitation_id=uuid4(),
+            payload_obj,
+            solicitation_id=solicitation_id,
         )
 
-    assert await db_session.scalar(
-        select(func.count()).select_from(ChatSession)
-    ) == 0
-    assert await db_session.scalar(
-        select(func.count()).select_from(ChatMessage)
-    ) == 0
-    assert await db_session.scalar(
-        select(func.count()).select_from(Solicitation)
-    ) == 0
+    rolled_back_sessions = await db_session.scalar(
+        select(func.count())
+        .select_from(ChatSession)
+        .where(ChatSession.title == expected_title)
+    )
+    assert rolled_back_sessions == 0
+    rolled_back_messages = await db_session.scalar(
+        select(func.count())
+        .select_from(ChatMessage)
+        .join(ChatSession, ChatMessage.session_id == ChatSession.id)
+        .where(ChatSession.title == expected_title)
+    )
+    assert rolled_back_messages == 0
+    assert (
+        await db_session.get(Solicitation, solicitation_id)
+    ) is None

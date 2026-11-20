@@ -165,7 +165,7 @@ async def test_shared_scenario_through_the_api(
     )
 
     # Os 40 kg são rejeitados, o motivo informa o saldo e o rascunho é preservado.
-    rejected = await client.post(f"/chat/lot-drafts/{draft_id}/confirm", headers=headers)
+    rejected = await client.post(f"/chat/lot-drafts/{draft_id}/confirm", headers=headers, json={"expected_revision": draft["revision"]})
     assert rejected.status_code == 422
     assert "saldo atual: 25 kg" in rejected.json()["detail"]
     preserved = await draft_from_chat(client, headers, session_id)
@@ -184,14 +184,14 @@ async def test_shared_scenario_through_the_api(
     availability = await client.post(
         f"/chat/lot-drafts/{draft_id}/availability",
         headers=headers,
-        json={"confirmed": True},
+        json={"confirmed": True, "expected_revision": patched.json()["revision"]},
     )
     assert availability.status_code == 200
     assert availability.json()["availability_confirmed"] is True
     assert availability.json()["lot_id"] is None
 
     # Autorização explícita: grava o lote de 20 kg com entrega no dia 6.
-    confirmed = await client.post(f"/chat/lot-drafts/{draft_id}/confirm", headers=headers)
+    confirmed = await client.post(f"/chat/lot-drafts/{draft_id}/confirm", headers=headers, json={"expected_revision": availability.json()["revision"]})
     assert confirmed.status_code == 200
     body = confirmed.json()
     assert body["status"] == "confirmado"
@@ -200,7 +200,7 @@ async def test_shared_scenario_through_the_api(
     assert body["saved_lot"]["order_id"] == str(env.order_id)
 
     # Repetir a mesma confirmação devolve o mesmo lote.
-    again = await client.post(f"/chat/lot-drafts/{draft_id}/confirm", headers=headers)
+    again = await client.post(f"/chat/lot-drafts/{draft_id}/confirm", headers=headers, json={"expected_revision": body["revision"]})
     assert again.status_code == 200
     assert again.json()["lot_id"] == body["lot_id"]
 
@@ -227,7 +227,7 @@ async def test_cancelled_order_is_rejected_with_conflict_and_draft_is_kept(
     order.cancelled = True
     await db_session.commit()
 
-    response = await client.post(f"/chat/lot-drafts/{draft['id']}/confirm", headers=headers)
+    response = await client.post(f"/chat/lot-drafts/{draft['id']}/confirm", headers=headers, json={"expected_revision": draft["revision"]})
 
     assert response.status_code == 409
     assert "cancelado" in response.json()["detail"]
@@ -247,7 +247,7 @@ async def test_date_outside_deadline_is_rejected_even_after_deadline_changed(
     order.delivery_end_date = date(2026, 11, 6)
     await db_session.commit()
 
-    response = await client.post(f"/chat/lot-drafts/{draft['id']}/confirm", headers=headers)
+    response = await client.post(f"/chat/lot-drafts/{draft['id']}/confirm", headers=headers, json={"expected_revision": draft["revision"]})
 
     assert response.status_code == 422
     assert "fora do prazo" in response.json()["detail"]
@@ -266,7 +266,7 @@ async def test_other_account_cannot_access_the_draft(
     patch = await client.patch(
         f"/chat/lot-drafts/{draft['id']}", headers=stranger, json={"quantity": "1"}
     )
-    confirm = await client.post(f"/chat/lot-drafts/{draft['id']}/confirm", headers=stranger)
+    confirm = await client.post(f"/chat/lot-drafts/{draft['id']}/confirm", headers=stranger, json={"expected_revision": draft["revision"]})
     create = await client.post(
         f"/chat/sessions/{session_id}/lot-drafts", headers=stranger, json=draft_body(env)
     )

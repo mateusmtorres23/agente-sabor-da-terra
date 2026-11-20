@@ -163,9 +163,9 @@ async def set_lot_draft_availability(
 )
 async def confirm_lot_draft(
     draft_id: UUID,
+    payload: LotDraftConfirmRequest,
     user: CurrentUser,
     draft_service: DraftService,
-    payload: LotDraftConfirmRequest | None = None,
 ) -> LotDraftOut:
     try:
         draft = await draft_service.confirm_draft(draft_id, user, payload)
